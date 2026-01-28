@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ad_001",
+    "type": "video",
+    "imagePath": "public/ads/ad_001/image.jpg",
+    "videoPath": "public/ads/ad_001/video.mp4",
+    "clickUrl": "https://www.google.com",
+    "minSeconds": 3,
+    "maxSeconds": 15,
+    "allowSkipAfter": 5,
+    "muteByDefault": true
+  },
+  {
+    "id": "ad_002",
+    "type": "image",
+    "imagePath": "public/ads/ad_002/image.jpg",
+    "videoPath": "public/ads/ad_002/video.mp4",
+    "clickUrl": "https://www.google.com",
+    "minSeconds": 2,
+    "maxSeconds": 10,
+    "allowSkipAfter": 3,
+    "muteByDefault": true
+  }
+]
