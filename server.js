@@ -54,9 +54,26 @@ function getNextAd() {
   return ad;
 }
 
+// Função para detectar protocolo correto (considera proxies como Render)
+function getProtocol(req) {
+  // Verificar header x-forwarded-proto (usado por proxies como Render)
+  const forwardedProto = req.get('x-forwarded-proto');
+  if (forwardedProto) {
+    return forwardedProto.split(',')[0].trim();
+  }
+  
+  // Verificar se está em produção (Render) - sempre HTTPS
+  if (process.env.NODE_ENV === 'production' || req.get('host')?.includes('onrender.com')) {
+    return 'https';
+  }
+  
+  // Fallback para req.protocol
+  return req.protocol;
+}
+
 // Função para construir URL completa
 function buildAssetUrl(req, assetPath) {
-  const protocol = req.protocol;
+  const protocol = getProtocol(req);
   const host = req.get('host');
   const relativePath = assetPath.replace('public/', '');
   return `${protocol}://${host}/${relativePath}`;
@@ -95,11 +112,13 @@ app.get('/ad/next', (req, res) => {
   }
   
   // Determinar asset principal baseado no tipo
+  const protocol = getProtocol(req);
+  const host = req.get('host');
   const mainAsset = ad.type === 'video' 
-    ? `${req.protocol}://${req.get('host')}/video/${ad.id}`
-    : `${req.protocol}://${req.get('host')}/imagem/${ad.id}`;
+    ? `${protocol}://${host}/video/${ad.id}`
+    : `${protocol}://${host}/imagem/${ad.id}`;
   
-  const fallbackAsset = `${req.protocol}://${req.get('host')}/imagem/${ad.id}`;
+  const fallbackAsset = `${protocol}://${host}/imagem/${ad.id}`;
   
   res.json({
     id: ad.id,
