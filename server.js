@@ -393,6 +393,7 @@ app.get('/ad/next', (req, res) => {
         display: flex;
         flex-direction: row;
         overflow: hidden;
+        position: relative;
       }
       
       .ad-image-wrapper {
@@ -404,6 +405,8 @@ app.get('/ad/next', (req, res) => {
         display: flex;
         align-items: center;
         justify-content: center;
+        position: relative;
+        z-index: 0;
       }
       
       .ad-image {
@@ -411,17 +414,23 @@ app.get('/ad/next', (req, res) => {
         height: 100%;
         object-fit: cover;
         object-position: center center;
+        display: block;
       }
       
       .ad-content {
         width: 50%;
         height: 100%;
+        min-height: 100%;
         padding: 30px;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
         overflow-y: auto;
+        overflow-x: hidden;
         background: rgba(245, 240, 255, 0.95);
+        position: relative;
+        z-index: 1;
+        flex-shrink: 0;
       }
       
       .ad-container {
@@ -478,8 +487,10 @@ app.get('/ad/next', (req, res) => {
       }
       
       .ad-image-wrapper {
+        width: 50%;
         height: 100%;
         min-height: 100%;
+        flex-shrink: 0;
       }
       
       .ad-image {
@@ -490,8 +501,15 @@ app.get('/ad/next', (req, res) => {
       }
       
       .ad-content {
+        width: 50%;
         height: 100%;
+        min-height: 100%;
         padding: 40px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+        z-index: 1;
+        flex-shrink: 0;
       }
       
       .ad-title {
@@ -542,6 +560,13 @@ app.get('/ad/next', (req, res) => {
       background: rgba(245, 240, 255, 0.95);
       flex: 1;
       overflow-y: auto;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+      visibility: visible !important;
+      opacity: 1 !important;
+      display: flex !important;
+      flex-direction: column;
     }
     
     .ad-title {
@@ -656,6 +681,79 @@ app.get('/ad/next', (req, res) => {
       font-style: italic;
     }
     
+    /* Estilos para Tablets e telas médias em Portrait */
+    @media (min-width: 601px) and (max-width: 1024px) and (orientation: portrait) {
+      .ad-container {
+        max-width: 700px;
+        width: 95%;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      .ad-content {
+        padding: 40px;
+        min-height: auto;
+        width: 100%;
+        height: auto;
+        overflow: visible;
+        display: block;
+      }
+      
+      .ad-image-wrapper {
+        height: 400px;
+        width: 100%;
+      }
+    }
+    
+    /* Estilos para Tablets em Landscape (iPad, etc) */
+    @media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+      .ad-container {
+        max-width: 1000px;
+        width: 95%;
+        height: 85vh;
+        display: flex !important;
+        flex-direction: row !important;
+      }
+      
+      .ad-image-wrapper {
+        width: 50% !important;
+        min-width: 50% !important;
+        flex-shrink: 0;
+      }
+      
+      .ad-content {
+        width: 50% !important;
+        min-width: 50% !important;
+        padding: 35px;
+        display: flex !important;
+        flex-direction: column !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        height: 100% !important;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+    }
+    
+    /* Garantir visibilidade em todas as telas grandes */
+    @media (min-width: 1025px) {
+      .ad-content {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: 50% !important;
+      }
+      
+      .ad-image-wrapper {
+        width: 50% !important;
+      }
+      
+      .ad-container {
+        display: flex !important;
+        flex-direction: row !important;
+      }
+    }
+    
     /* Estilos para Portrait (Retrato) - Mobile */
     @media (max-width: 600px) and (orientation: portrait) {
       body {
@@ -708,6 +806,7 @@ app.get('/ad/next', (req, res) => {
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-shrink: 0;
       }
       
       .ad-image {
@@ -720,9 +819,14 @@ app.get('/ad/next', (req, res) => {
       .ad-content {
         width: 60%;
         height: 100%;
+        min-height: 100%;
         padding: 20px;
         background: rgba(245, 240, 255, 0.95);
         overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+        z-index: 1;
+        flex-shrink: 0;
       }
       
       .ad-image-wrapper {
