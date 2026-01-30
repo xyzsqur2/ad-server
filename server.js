@@ -359,6 +359,7 @@ app.get('/ad/next', (req, res) => {
       justify-content: center;
       padding: 20px;
       color: #fff;
+      overflow-x: hidden;
     }
     
     .ad-container {
@@ -369,6 +370,104 @@ app.get('/ad/next', (req, res) => {
       overflow: hidden;
       box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
       animation: fadeInUp 0.9s ease-out;
+      margin: 0 auto;
+    }
+    
+    /* Estilos para Landscape (Paisagem) */
+    @media (orientation: landscape) and (min-width: 600px) {
+      body {
+        padding: 20px 40px;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .ad-container {
+        max-width: 900px;
+        width: 90%;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: row;
+        overflow: hidden;
+      }
+      
+      .ad-image-wrapper {
+        width: 50%;
+        height: 100%;
+        min-height: 90vh;
+        flex-shrink: 0;
+      }
+      
+      .ad-content {
+        width: 50%;
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        overflow-y: auto;
+        max-height: 90vh;
+      }
+      
+      .ad-title {
+        font-size: 32px;
+        margin-bottom: 10px;
+      }
+      
+      .ad-subtitle {
+        font-size: 17px;
+        margin-bottom: 20px;
+      }
+      
+      .ad-highlight {
+        font-size: 18px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+      }
+      
+      .ad-description {
+        font-size: 15px;
+        margin-bottom: 20px;
+      }
+      
+      .ad-features {
+        margin-bottom: 20px;
+      }
+      
+      .ad-features li {
+        font-size: 14px;
+        padding: 8px 0;
+        padding-left: 30px;
+      }
+      
+      .ad-cta {
+        padding: 16px 35px;
+        font-size: 18px;
+      }
+      
+      .ad-footer {
+        margin-top: 15px;
+        font-size: 12px;
+      }
+    }
+    
+    /* Landscape em telas muito largas */
+    @media (orientation: landscape) and (min-width: 1200px) {
+      .ad-container {
+        max-width: 1100px;
+      }
+      
+      .ad-content {
+        padding: 40px;
+      }
+      
+      .ad-title {
+        font-size: 38px;
+      }
+      
+      .ad-subtitle {
+        font-size: 19px;
+      }
     }
     
     @keyframes fadeInUp {
@@ -516,7 +615,16 @@ app.get('/ad/next', (req, res) => {
       font-style: italic;
     }
     
-    @media (max-width: 600px) {
+    /* Estilos para Portrait (Retrato) - Mobile */
+    @media (max-width: 600px) and (orientation: portrait) {
+      body {
+        padding: 15px;
+      }
+      
+      .ad-container {
+        max-width: 100%;
+      }
+      
       .ad-title {
         font-size: 28px;
       }
@@ -536,6 +644,72 @@ app.get('/ad/next', (req, res) => {
       
       .ad-image-wrapper {
         height: 250px;
+      }
+    }
+    
+    /* Landscape em mobile (telas pequenas em paisagem) */
+    @media (orientation: landscape) and (max-height: 500px) {
+      body {
+        padding: 10px;
+      }
+      
+      .ad-container {
+        max-width: 100%;
+        max-height: 95vh;
+        flex-direction: row;
+      }
+      
+      .ad-image-wrapper {
+        width: 40%;
+        height: 100%;
+        min-height: auto;
+      }
+      
+      .ad-content {
+        width: 60%;
+        padding: 20px;
+        max-height: 95vh;
+      }
+      
+      .ad-title {
+        font-size: 24px;
+        margin-bottom: 8px;
+      }
+      
+      .ad-subtitle {
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+      
+      .ad-highlight {
+        font-size: 14px;
+        padding: 10px 15px;
+        margin-bottom: 12px;
+      }
+      
+      .ad-description {
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      
+      .ad-features {
+        margin-bottom: 12px;
+      }
+      
+      .ad-features li {
+        font-size: 12px;
+        padding: 6px 0;
+        padding-left: 25px;
+      }
+      
+      .ad-cta {
+        padding: 12px 25px;
+        font-size: 14px;
+      }
+      
+      .ad-footer {
+        margin-top: 10px;
+        font-size: 11px;
       }
     }
   </style>
