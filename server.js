@@ -52,6 +52,7 @@ const corsOptions = {
 
 // Aplicar CORS globalmente (sempre habilitado)
 app.use(cors(corsOptions));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Garantir preflight OPTIONS para todas as rotas
 app.options('*', cors(corsOptions));
