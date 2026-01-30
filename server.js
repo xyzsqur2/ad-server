@@ -371,6 +371,8 @@ app.get('/ad/next', (req, res) => {
       box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
       animation: fadeInUp 0.9s ease-out;
       margin: 0 auto;
+      display: flex;
+      flex-direction: column;
     }
     
     /* Estilos para Landscape (Paisagem) */
@@ -397,6 +399,7 @@ app.get('/ad/next', (req, res) => {
         height: 100%;
         min-height: 90vh;
         flex-shrink: 0;
+        border-radius: 0;
       }
       
       .ad-content {
@@ -404,9 +407,14 @@ app.get('/ad/next', (req, res) => {
         padding: 30px;
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
         overflow-y: auto;
         max-height: 90vh;
+        background: rgba(245, 240, 255, 0.95);
+      }
+      
+      .ad-container {
+        border-radius: 0;
       }
       
       .ad-title {
@@ -487,12 +495,14 @@ app.get('/ad/next', (req, res) => {
       overflow: hidden;
       position: relative;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      flex-shrink: 0;
     }
     
     .ad-image {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: center;
       display: block;
       transition: transform 0.5s ease;
     }
@@ -504,6 +514,9 @@ app.get('/ad/next', (req, res) => {
     .ad-content {
       padding: 35px;
       color: #333;
+      background: rgba(245, 240, 255, 0.95);
+      flex: 1;
+      overflow-y: auto;
     }
     
     .ad-title {
@@ -515,6 +528,9 @@ app.get('/ad/next', (req, res) => {
       -webkit-text-fill-color: transparent;
       background-clip: text;
       line-height: 1.2;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      hyphens: auto;
     }
     
     .ad-subtitle {
@@ -536,6 +552,8 @@ app.get('/ad/next', (req, res) => {
       margin-bottom: 25px;
       box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
       animation: pulse 2s ease-in-out infinite;
+      word-wrap: break-word;
+      line-height: 1.4;
     }
     
     @keyframes pulse {
@@ -552,7 +570,8 @@ app.get('/ad/next', (req, res) => {
       color: #555;
       line-height: 1.9;
       margin-bottom: 28px;
-      text-align: justify;
+      text-align: left;
+      word-wrap: break-word;
     }
     
     .ad-features {
@@ -576,10 +595,7 @@ app.get('/ad/next', (req, res) => {
       color: #667eea;
       font-weight: bold;
       font-size: 22px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      line-height: 1.4;
     }
     
     .ad-cta {
@@ -669,6 +685,15 @@ app.get('/ad/next', (req, res) => {
         width: 60%;
         padding: 20px;
         max-height: 95vh;
+        background: rgba(245, 240, 255, 0.95);
+      }
+      
+      .ad-image-wrapper {
+        border-radius: 0;
+      }
+      
+      .ad-container {
+        border-radius: 0;
       }
       
       .ad-title {
