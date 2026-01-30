@@ -196,6 +196,99 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
+// Proxy para imagem do Google Drive
+app.get('/proxy-image', async (req, res) => {
+  try {
+    const driveId = '1fPU_2vU-6jvHpevpFmBc4A6dsT8FdLv3';
+    
+    // Tentar múltiplos formatos de URL do Google Drive
+    const urls = [
+      `https://drive.google.com/uc?export=view&id=${driveId}`, // Primeiro: view (melhor para imagens)
+      `https://drive.google.com/uc?export=download&id=${driveId}`, // Segundo: download
+      `https://lh3.googleusercontent.com/d/${driveId}=w1920-h1080`, // Terceiro: thumbnail direto
+    ];
+    
+    let imageData = null;
+    let contentType = 'image/jpeg';
+    
+    // Tentar cada URL até uma funcionar
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+          'Referer': 'https://drive.google.com/'
+          },
+          redirect: 'follow',
+          // Timeout de 10 segundos
+          signal: AbortSignal.timeout(10000)
+        });
+        
+        if (response.ok) {
+          const contentTypeHeader = response.headers.get('content-type') || '';
+          
+          // Verificar se é realmente uma imagem (não HTML de erro)
+          if (contentTypeHeader.startsWith('image/')) {
+            contentType = contentTypeHeader;
+            imageData = await response.arrayBuffer();
+            
+            // Verificar se não é HTML disfarçado (Google Drive às vezes retorna HTML)
+            if (imageData.byteLength > 0) {
+              const firstBytes = new Uint8Array(imageData.slice(0, 4));
+              const isImage = firstBytes[0] === 0xFF && firstBytes[1] === 0xD8 || // JPEG
+                             firstBytes[0] === 0x89 && firstBytes[1] === 0x50 || // PNG
+                             firstBytes[0] === 0x47 && firstBytes[1] === 0x49;    // GIF
+              
+              if (isImage || contentTypeHeader.includes('image')) {
+                console.log(`[proxy-image] ✅ Imagem carregada com sucesso de: ${url} (${contentTypeHeader}, ${imageData.byteLength} bytes)`);
+                break;
+              }
+            }
+          } else {
+            console.log(`[proxy-image] ⚠️ URL retornou ${contentTypeHeader} ao invés de imagem: ${url}`);
+          }
+        } else {
+          console.log(`[proxy-image] ⚠️ URL retornou status ${response.status}: ${url}`);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          console.log(`[proxy-image] ⏱️ Timeout ao tentar URL: ${url}`);
+        } else {
+          console.log(`[proxy-image] ❌ Erro ao tentar URL ${url}:`, err.message);
+        }
+        continue;
+      }
+    }
+    
+    if (!imageData) {
+      // Se nenhuma URL funcionar, retornar erro com instruções
+      console.error('[proxy-image] ❌ Nenhuma URL do Google Drive funcionou');
+      return res.status(404).json({ 
+        error: 'Imagem não encontrada',
+        message: 'Não foi possível carregar a imagem do Google Drive.',
+        instructions: [
+          '1. Certifique-se de que o arquivo está configurado para "Qualquer pessoa com o link pode visualizar"',
+          '2. Verifique se o ID do arquivo está correto',
+          '3. Tente fazer upload da imagem diretamente no servidor em ad-server/public/ads/comercial/'
+        ]
+      });
+    }
+    
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Content-Type', contentType);
+    res.set('Content-Disposition', 'inline');
+    res.send(Buffer.from(imageData));
+    
+  } catch (error) {
+    console.error('[proxy-image] ❌ Erro geral ao buscar imagem:', error);
+    res.status(500).json({ 
+      error: 'Erro ao carregar imagem',
+      message: error.message 
+    });
+  }
+});
+
 // Obter próximo anúncio - RETORNA HTML COMERCIAL
 app.get('/ad/next', (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -231,15 +324,17 @@ app.get('/ad/next', (req, res) => {
     `);
   }
   
-  // URL da imagem do Google Drive (convertida para link direto)
-  const imageUrl = 'https://drive.google.com/uc?export=view&id=1fPU_2vU-6jvHpevpFmBc4A6dsT8FdLv3';
+  // URL da imagem via proxy do servidor (resolve problemas de CORS e hotlinking)
+  const protocol = getProtocol(req);
+  const host = req.get('host');
+  const imageUrl = `${protocol}://${host}/proxy-image`;
   
   // URL de clique do anúncio
   const clickUrl = ad.clickUrl || '#';
   
   // Log do anúncio escolhido e origin
   const origin = req.get('origin') || 'no-origin';
-  console.log(`[AD] Anúncio HTML escolhido: ${ad.id} | Origin: ${origin}`);
+  console.log(`[AD] Anúncio HTML escolhido: ${ad.id} | Origin: ${origin} | Image URL: ${imageUrl}`);
   
   // HTML do comercial
   const html = `<!DOCTYPE html>
