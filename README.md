@@ -147,13 +147,28 @@ Edite `data/ads.json` para adicionar ou modificar anúncios:
 **Campos:**
 - `id` - Identificador único do anúncio
 - `type` - `"video"` ou `"image"`
-- `imagePath` - Caminho relativo da imagem
-- `videoPath` - Caminho relativo do vídeo
+- `imagePath` - Caminho relativo da imagem (não usado diretamente, apenas para referência)
+- `videoPath` - Caminho relativo do vídeo (não usado diretamente, apenas para referência)
 - `clickUrl` - URL para abrir ao clicar
 - `minSeconds` - Tempo mínimo de exibição
 - `maxSeconds` - Tempo máximo de exibição (auto-fechar)
 - `allowSkipAfter` - Segundos antes de permitir pular
 - `muteByDefault` - Vídeo mudo por padrão
+
+### 📦 Assets de Mídia
+
+**IMPORTANTE:** Os arquivos de mídia (imagens e vídeos) precisam estar versionados no repositório ou hospedados em storage externo.
+
+**Estrutura de arquivos:**
+- Imagens: devem estar em `public/ads/<adId>/` com extensões `.jpg`, `.jpeg`, `.png` ou `.webp`
+- Vídeos: devem estar em `public/ads/<adId>/` com extensão `.mp4`
+
+O servidor procura automaticamente os arquivos por extensão, então os nomes dos arquivos podem variar (ex: `capa.jpg`, `imagem.png`, `video.mp4`, etc.).
+
+**Para deploy no Render:**
+- Certifique-se de que os arquivos estão commitados no Git
+- Verifique que `.gitignore` não está ignorando `public/ads/**`
+- Os arquivos serão incluídos automaticamente no deploy
 
 ## 🧪 Testar
 

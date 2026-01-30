@@ -52,6 +52,8 @@ const corsOptions = {
 
 // Aplicar CORS globalmente (sempre habilitado)
 app.use(cors(corsOptions));
+
+// Servir arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Garantir preflight OPTIONS para todas as rotas
@@ -122,6 +124,55 @@ function buildAssetUrl(req, assetPath) {
   return `${protocol}://${host}/${relativePath}`;
 }
 
+// Helper para encontrar arquivo de asset por extensões
+function findAsset(adId, extensions) {
+  const baseDir = path.join(__dirname, 'public', 'ads', adId);
+  
+  // Verificar se diretório existe
+  if (!fs.existsSync(baseDir)) {
+    console.error(`[findAsset] Diretório não encontrado: ${baseDir}`);
+    return null;
+  }
+  
+  // Listar arquivos no diretório
+  let files;
+  try {
+    files = fs.readdirSync(baseDir);
+  } catch (err) {
+    console.error(`[findAsset] Erro ao ler diretório ${baseDir}:`, err.message);
+    return null;
+  }
+  
+  // Procurar arquivo que corresponda a uma das extensões
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (extensions.includes(ext)) {
+      const fullPath = path.join(baseDir, file);
+      console.log(`[findAsset] Arquivo encontrado: ${fullPath}`);
+      return fullPath;
+    }
+  }
+  
+  // Nenhum arquivo encontrado
+  console.error(`[findAsset] Nenhum arquivo encontrado em ${baseDir} com extensões: ${extensions.join(', ')}`);
+  console.error(`[findAsset] Arquivos disponíveis: ${files.join(', ')}`);
+  return null;
+}
+
+// Função para determinar Content-Type por extensão
+function getContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const contentTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.gif': 'image/gif'
+  };
+  return contentTypes[ext] || 'application/octet-stream';
+}
+
 // Função para log de tracking
 function logTracking(data) {
   const logPath = path.join(__dirname, 'logs', 'tracking.log');
@@ -186,21 +237,41 @@ app.get('/imagem/:id', (req, res) => {
   const ad = ads.find(a => a.id === adId);
   
   if (!ad) {
+    console.error(`[imagem] Anúncio não encontrado: ${adId}`);
     return res.status(404).json({ error: 'Anúncio não encontrado' });
   }
   
-  const imagePath = path.join(__dirname, ad.imagePath);
+  // Procurar arquivo de imagem por extensões
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+  const imagePath = findAsset(adId, imageExtensions);
   
-  if (!fs.existsSync(imagePath)) {
-    return res.status(404).json({ error: 'Imagem não encontrada' });
+  if (!imagePath) {
+    const baseDir = path.join(__dirname, 'public', 'ads', adId);
+    console.error(`[imagem] Imagem não encontrada para ${adId} no diretório: ${baseDir}`);
+    return res.status(404).json({ 
+      error: 'Imagem não encontrada',
+      adId: adId,
+      searchedDirectory: baseDir,
+      expectedExtensions: imageExtensions
+    });
   }
   
+  // Determinar Content-Type por extensão
+  const contentType = getContentType(imagePath);
+  
   res.set('Cache-Control', 'public, max-age=300');
-  res.set('Content-Type', 'image/jpeg');
+  res.set('Content-Type', contentType);
   res.set('Content-Disposition', 'inline');
   
-  const imageStream = fs.createReadStream(imagePath);
-  imageStream.pipe(res);
+  // Usar sendFile para servir o arquivo
+  res.sendFile(imagePath, (err) => {
+    if (err) {
+      console.error(`[imagem] Erro ao enviar arquivo ${imagePath}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erro ao servir imagem' });
+      }
+    }
+  });
 });
 
 // Servir vídeo com suporte a HTTP Range
@@ -209,16 +280,34 @@ app.get('/video/:id', (req, res) => {
   const ad = ads.find(a => a.id === adId);
   
   if (!ad) {
+    console.error(`[video] Anúncio não encontrado: ${adId}`);
     return res.status(404).json({ error: 'Anúncio não encontrado' });
   }
   
-  const videoPath = path.join(__dirname, ad.videoPath);
+  // Procurar arquivo de vídeo por extensão
+  const videoExtensions = ['.mp4'];
+  const videoPath = findAsset(adId, videoExtensions);
   
-  if (!fs.existsSync(videoPath)) {
-    return res.status(404).json({ error: 'Vídeo não encontrado' });
+  if (!videoPath) {
+    const baseDir = path.join(__dirname, 'public', 'ads', adId);
+    console.error(`[video] Vídeo não encontrado para ${adId} no diretório: ${baseDir}`);
+    return res.status(404).json({ 
+      error: 'Vídeo não encontrado',
+      adId: adId,
+      searchedDirectory: baseDir,
+      expectedExtensions: videoExtensions
+    });
   }
   
-  const stat = fs.statSync(videoPath);
+  // Obter estatísticas do arquivo
+  let stat;
+  try {
+    stat = fs.statSync(videoPath);
+  } catch (err) {
+    console.error(`[video] Erro ao obter estatísticas de ${videoPath}:`, err.message);
+    return res.status(500).json({ error: 'Erro ao acessar arquivo de vídeo' });
+  }
+  
   const fileSize = stat.size;
   const range = req.headers.range;
   
@@ -233,12 +322,26 @@ app.get('/video/:id', (req, res) => {
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
     const chunksize = (end - start) + 1;
+    
+    // Validar range
+    if (start >= fileSize || end >= fileSize || start > end) {
+      res.status(416).set('Content-Range', `bytes */${fileSize}`);
+      return res.json({ error: 'Range não satisfazível' });
+    }
+    
     const file = fs.createReadStream(videoPath, { start, end });
     
     res.status(206); // Partial Content
     res.set('Content-Range', `bytes ${start}-${end}/${fileSize}`);
     res.set('Content-Length', chunksize);
     res.set('Content-Type', 'video/mp4');
+    
+    file.on('error', (err) => {
+      console.error(`[video] Erro ao ler stream de ${videoPath}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erro ao servir vídeo' });
+      }
+    });
     
     file.pipe(res);
   } else {
@@ -247,6 +350,14 @@ app.get('/video/:id', (req, res) => {
     res.set('Content-Type', 'video/mp4');
     
     const file = fs.createReadStream(videoPath);
+    
+    file.on('error', (err) => {
+      console.error(`[video] Erro ao ler stream de ${videoPath}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Erro ao servir vídeo' });
+      }
+    });
+    
     file.pipe(res);
   }
 });
