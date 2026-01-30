@@ -10,23 +10,65 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3002;
 
+// Trust proxy para produção (Render, etc)
+app.set('trust proxy', 1);
+
 // CORS configurável via variável de ambiente
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : [];
 
-if (allowedOrigins.length > 0) {
-  app.use(cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true
-  }));
+// Função para verificar se origin é permitida
+function isAllowedOrigin(origin) {
+  // Se origin for undefined (curl, server-to-server), permitir
+  if (!origin) {
+    return true;
+  }
+  
+  // Se ALLOWED_ORIGINS definido: permitir apenas se origin estiver na lista
+  if (allowedOrigins.length > 0) {
+    return allowedOrigins.includes(origin);
+  }
+  
+  // Se ALLOWED_ORIGINS não definido: permitir tudo (modo dev)
+  return true;
 }
+
+// Configuração CORS
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
+  exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length'],
+  credentials: false,
+  maxAge: 86400
+};
+
+// Aplicar CORS globalmente (sempre habilitado)
+app.use(cors(corsOptions));
+
+// Garantir preflight OPTIONS para todas as rotas
+app.options('*', cors(corsOptions));
+
+// Middleware de logging de requisições
+app.use((req, res, next) => {
+  const origin = req.get('origin') || 'no-origin';
+  const method = req.method;
+  const path = req.path;
+  
+  // Log após resposta
+  res.on('finish', () => {
+    console.log(`[${method}] ${path} | Origin: ${origin} | Status: ${res.statusCode}`);
+  });
+  
+  next();
+});
 
 app.use(express.json());
 
@@ -119,6 +161,10 @@ app.get('/ad/next', (req, res) => {
     : `${protocol}://${host}/imagem/${ad.id}`;
   
   const fallbackAsset = `${protocol}://${host}/imagem/${ad.id}`;
+  
+  // Log do anúncio escolhido e origin
+  const origin = req.get('origin') || 'no-origin';
+  console.log(`[AD] Anúncio escolhido: ${ad.id} | Origin: ${origin}`);
   
   res.json({
     id: ad.id,
@@ -231,4 +277,38 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor de anúncios rodando na porta ${PORT}`);
   console.log(`📡 Health: http://localhost:${PORT}/health`);
   console.log(`📢 Próximo anúncio: http://localhost:${PORT}/ad/next`);
+  
+  if (allowedOrigins.length > 0) {
+    console.log(`🔒 CORS restrito para: ${allowedOrigins.join(', ')}`);
+  } else {
+    console.log(`🌐 CORS permitindo todas as origens (modo dev)`);
+  }
+  
+  console.log(`\n📝 Exemplo de configuração ALLOWED_ORIGINS:`);
+  console.log(`   ALLOWED_ORIGINS=http://localhost:3000,capacitor://localhost,http://localhost`);
 });
+
+/*
+ * ========== TESTES ==========
+ * 
+ * 1) Local:
+ *    - rodar server: npm start
+ *    - abrir app em http://localhost:3000
+ *    - confirmar que /ad/next responde com header Access-Control-Allow-Origin: http://localhost:3000
+ *    - verificar no console: [GET] /ad/next | Origin: http://localhost:3000 | Status: 200
+ * 
+ * 2) Preflight:
+ *    - fazer um POST /track com Content-Type: application/json
+ *    - verificar que OPTIONS retorna 204/200 ok
+ *    - verificar headers: Access-Control-Allow-Methods, Access-Control-Allow-Headers
+ * 
+ * 3) Vídeo com Range:
+ *    - testar /video/:id com header Range: bytes=0-1023
+ *    - confirmar exposed headers: Content-Range, Accept-Ranges, Content-Length
+ *    - verificar status 206 (Partial Content)
+ * 
+ * 4) Produção (Render):
+ *    - verificar que trust proxy está configurado
+ *    - testar com ALLOWED_ORIGINS definido
+ *    - verificar logs de origin e ad.id no /ad/next
+ */
