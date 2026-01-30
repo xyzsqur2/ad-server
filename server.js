@@ -196,39 +196,294 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
-// Obter próximo anúncio
+// Obter próximo anúncio - RETORNA HTML COMERCIAL
 app.get('/ad/next', (req, res) => {
   res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'text/html; charset=utf-8');
   
   const ad = getNextAd();
   if (!ad) {
-    return res.status(404).json({ error: 'Nenhum anúncio disponível' });
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Anúncio não disponível</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+          }
+          h1 { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h1>Nenhum anúncio disponível no momento</h1>
+      </body>
+      </html>
+    `);
   }
   
-  // Determinar asset principal baseado no tipo
-  const protocol = getProtocol(req);
-  const host = req.get('host');
-  const mainAsset = ad.type === 'video' 
-    ? `${protocol}://${host}/video/${ad.id}`
-    : `${protocol}://${host}/imagem/${ad.id}`;
+  // URL da imagem do Google Drive (convertida para link direto)
+  const imageUrl = 'https://drive.google.com/uc?export=view&id=1fPU_2vU-6jvHpevpFmBc4A6dsT8FdLv3';
   
-  const fallbackAsset = `${protocol}://${host}/imagem/${ad.id}`;
+  // URL de clique do anúncio
+  const clickUrl = ad.clickUrl || '#';
   
   // Log do anúncio escolhido e origin
   const origin = req.get('origin') || 'no-origin';
-  console.log(`[AD] Anúncio escolhido: ${ad.id} | Origin: ${origin}`);
+  console.log(`[AD] Anúncio HTML escolhido: ${ad.id} | Origin: ${origin}`);
   
-  res.json({
-    id: ad.id,
-    type: ad.type,
-    src: mainAsset,
-    fallbackSrc: fallbackAsset,
-    clickUrl: ad.clickUrl,
-    minSeconds: ad.minSeconds,
-    maxSeconds: ad.maxSeconds,
-    allowSkipAfter: ad.allowSkipAfter,
-    muteByDefault: ad.muteByDefault
-  });
+  // HTML do comercial
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Descubra o Melhor Entretenimento</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #fff;
+    }
+    
+    .ad-container {
+      max-width: 650px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);
+      animation: fadeInUp 0.9s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .ad-image-wrapper {
+      width: 100%;
+      height: 350px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .ad-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.5s ease;
+    }
+    
+    .ad-image:hover {
+      transform: scale(1.05);
+    }
+    
+    .ad-content {
+      padding: 35px;
+      color: #333;
+    }
+    
+    .ad-title {
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    
+    .ad-subtitle {
+      font-size: 19px;
+      color: #666;
+      margin-bottom: 25px;
+      line-height: 1.6;
+      font-weight: 500;
+    }
+    
+    .ad-highlight {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 18px 28px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-align: center;
+      font-size: 20px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.02);
+      }
+    }
+    
+    .ad-description {
+      font-size: 17px;
+      color: #555;
+      line-height: 1.9;
+      margin-bottom: 28px;
+      text-align: justify;
+    }
+    
+    .ad-features {
+      list-style: none;
+      margin-bottom: 30px;
+    }
+    
+    .ad-features li {
+      padding: 12px 0;
+      padding-left: 35px;
+      position: relative;
+      color: #444;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    
+    .ad-features li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #667eea;
+      font-weight: bold;
+      font-size: 22px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .ad-cta {
+      display: block;
+      text-align: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 45px;
+      border-radius: 50px;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .ad-cta:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.7);
+    }
+    
+    .ad-cta:active {
+      transform: translateY(-1px);
+    }
+    
+    .ad-footer {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 13px;
+      color: #999;
+      font-style: italic;
+    }
+    
+    @media (max-width: 600px) {
+      .ad-title {
+        font-size: 28px;
+      }
+      
+      .ad-subtitle {
+        font-size: 17px;
+      }
+      
+      .ad-highlight {
+        font-size: 18px;
+        padding: 15px 20px;
+      }
+      
+      .ad-content {
+        padding: 25px;
+      }
+      
+      .ad-image-wrapper {
+        height: 250px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ad-container">
+    <div class="ad-image-wrapper">
+      <img src="${imageUrl}" alt="Entretenimento Premium" class="ad-image" />
+    </div>
+    <div class="ad-content">
+      <h1 class="ad-title">🎬 Transforme Seu Entretenimento</h1>
+      <p class="ad-subtitle">A experiência cinematográfica que você sempre sonhou está ao seu alcance</p>
+      
+      <div class="ad-highlight">
+        ✨ Milhares de Filmes e Séries Esperando por Você ✨
+      </div>
+      
+      <p class="ad-description">
+        Descubra um mundo de entretenimento sem limites! Nossa plataforma oferece o melhor conteúdo 
+        para você assistir quando e onde quiser. Qualidade premium, sem complicações. 
+        Transforme cada momento em uma experiência inesquecível.
+      </p>
+      
+      <ul class="ad-features">
+        <li>Catálogo exclusivo com milhares de títulos</li>
+        <li>Qualidade HD e 4K Ultra disponível</li>
+        <li>Assista offline quando quiser</li>
+        <li>Sem interrupções durante os filmes</li>
+        <li>Interface intuitiva e moderna</li>
+        <li>Atualizações semanais de conteúdo</li>
+      </ul>
+      
+      <a href="${clickUrl}" class="ad-cta" target="_blank" rel="noopener noreferrer">
+        Começar Agora - É Grátis! 🚀
+      </a>
+      
+      <p class="ad-footer">Oferta especial por tempo limitado • Cancele quando quiser</p>
+    </div>
+  </div>
+</body>
+</html>`;
+  
+  res.send(html);
 });
 
 // Servir imagem
