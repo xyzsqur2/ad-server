@@ -388,6 +388,7 @@ app.get('/ad/next', (req, res) => {
       .ad-container {
         max-width: 900px;
         width: 90%;
+        height: 90vh;
         max-height: 90vh;
         display: flex;
         flex-direction: row;
@@ -397,19 +398,29 @@ app.get('/ad/next', (req, res) => {
       .ad-image-wrapper {
         width: 50%;
         height: 100%;
-        min-height: 90vh;
+        min-height: 100%;
         flex-shrink: 0;
         border-radius: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .ad-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
       }
       
       .ad-content {
         width: 50%;
+        height: 100%;
         padding: 30px;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
         overflow-y: auto;
-        max-height: 90vh;
         background: rgba(245, 240, 255, 0.95);
       }
       
@@ -463,9 +474,23 @@ app.get('/ad/next', (req, res) => {
     @media (orientation: landscape) and (min-width: 1200px) {
       .ad-container {
         max-width: 1100px;
+        height: 90vh;
+      }
+      
+      .ad-image-wrapper {
+        height: 100%;
+        min-height: 100%;
+      }
+      
+      .ad-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
       }
       
       .ad-content {
+        height: 100%;
         padding: 40px;
       }
       
@@ -671,6 +696,7 @@ app.get('/ad/next', (req, res) => {
       
       .ad-container {
         max-width: 100%;
+        height: 95vh;
         max-height: 95vh;
         flex-direction: row;
       }
@@ -678,14 +704,25 @@ app.get('/ad/next', (req, res) => {
       .ad-image-wrapper {
         width: 40%;
         height: 100%;
-        min-height: auto;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .ad-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
       }
       
       .ad-content {
         width: 60%;
+        height: 100%;
         padding: 20px;
-        max-height: 95vh;
         background: rgba(245, 240, 255, 0.95);
+        overflow-y: auto;
       }
       
       .ad-image-wrapper {
