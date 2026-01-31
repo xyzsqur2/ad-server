@@ -14,9 +14,16 @@ const PORT = process.env.PORT || 3002;
 app.set('trust proxy', 1);
 
 // CORS configurável via variável de ambiente
+// Incluir origens padrão do Capacitor/Android
+const defaultOrigins = [
+  'capacitor://localhost',
+  'http://localhost',
+  'https://localhost'
+];
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : [];
+  ? [...defaultOrigins, ...process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())]
+  : defaultOrigins;
 
 // Função para verificar se origin é permitida
 function isAllowedOrigin(origin) {
@@ -25,12 +32,12 @@ function isAllowedOrigin(origin) {
     return true;
   }
   
-  // Se ALLOWED_ORIGINS definido: permitir apenas se origin estiver na lista
+  // Verificar se está na lista de origens permitidas (inclui padrões do Capacitor)
   if (allowedOrigins.length > 0) {
     return allowedOrigins.includes(origin);
   }
   
-  // Se ALLOWED_ORIGINS não definido: permitir tudo (modo dev)
+  // Se nenhuma origem configurada: permitir tudo (modo dev)
   return true;
 }
 
