@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "express": "^4.21.2",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "geoip-lite": "^1.4.7",
+    "firebase-admin": "^12.0.0"
   }
 }

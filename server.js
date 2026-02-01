@@ -3,6 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import { IPGeolocationService } from './services/ip-geolocation.service.js';
+import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +86,24 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+// ========== SERVIÇOS ==========
+const ipGeoService = new IPGeolocationService();
+const firebaseTracking = new FirebaseTrackingService();
+
+// Função auxiliar para gerar ID
+function generateId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Função para obter IP real do usuário
+function getClientIP(req) {
+  return req.ip || 
+         req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+         req.headers['x-real-ip'] || 
+         req.connection?.remoteAddress ||
+         'unknown';
+}
 
 // Carregar anúncios
 const adsPath = path.join(__dirname, 'data', 'ads.json');
@@ -1059,25 +1082,192 @@ app.get('/video/:id', (req, res) => {
   }
 });
 
-// Tracking de eventos
-app.post('/track', (req, res) => {
+// Tracking de eventos (ATUALIZADO COM GEOLOCALIZAÇÃO E HORÁRIO)
+app.post('/track', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   
   try {
+    // Obter IP do cliente
+    const clientIP = getClientIP(req);
+    
+    // Obter geolocalização por IP (síncrono, rápido)
+    const geo = ipGeoService.getLocationByIP(clientIP);
+    
+    // Timestamp UTC atual
+    const utcNow = new Date();
+    
+    // Converter para horário local do usuário (se tiver timezone)
+    const localTimeInfo = ipGeoService.convertToLocalTime(
+      utcNow, 
+      geo.timezone || null
+    );
+    
+    // Preparar dados de tracking
     const trackingData = {
       event: req.body.event || 'unknown',
-      ts: req.body.ts || new Date().toISOString(),
+      ts: req.body.ts || utcNow.toISOString(),
       adId: req.body.adId || null,
       watchedMs: req.body.watchedMs || 0,
       ...req.body
     };
-    
+
+    // Log no arquivo (mantém compatibilidade)
     logTracking(trackingData);
-    
-    res.json({ success: true });
+
+    // Salvar no Firebase com geolocalização E horário local (assíncrono, não bloqueia)
+    if (geo.success) {
+      const firebaseData = {
+        event: trackingData.event,
+        adId: trackingData.adId || null,
+        ts: utcNow.toISOString(), // Horário UTC
+        watchedMs: trackingData.watchedMs || 0,
+        localTime: localTimeInfo.localTime ? localTimeInfo.localTime.toISOString() : null,
+        localTimeString: localTimeInfo.localTimeString, // String legível
+        hourLocal: localTimeInfo.hourLocal, // Hora (0-23)
+        dayOfWeek: localTimeInfo.dayOfWeek, // Dia da semana (0-6)
+        ipAddress: geo.ip,
+        countryCode: geo.country_code,
+        countryName: geo.country_name,
+        region: geo.region,
+        city: geo.city,
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        timezone: geo.timezone,
+        deviceInfo: req.body.device_info || null,
+        userAgent: req.get('user-agent') || null,
+        eventData: trackingData,
+        createdAt: utcNow.toISOString()
+      };
+
+      // Salvar assincronamente (não aguardar)
+      firebaseTracking.saveTracking(firebaseData).catch(err => {
+        console.error('Erro ao salvar tracking no Firebase:', err.message);
+        // Não quebrar o fluxo se o Firebase falhar
+      });
+    } else {
+      // Tentar salvar mesmo sem geolocalização (IP inválido ou não encontrado)
+      const firebaseData = {
+        event: trackingData.event,
+        adId: trackingData.adId || null,
+        ts: utcNow.toISOString(),
+        watchedMs: trackingData.watchedMs || 0,
+        localTime: localTimeInfo.localTime ? localTimeInfo.localTime.toISOString() : null,
+        localTimeString: localTimeInfo.localTimeString,
+        hourLocal: localTimeInfo.hourLocal,
+        dayOfWeek: localTimeInfo.dayOfWeek,
+        ipAddress: clientIP,
+        userAgent: req.get('user-agent') || null,
+        eventData: trackingData,
+        createdAt: utcNow.toISOString()
+      };
+
+      firebaseTracking.saveTracking(firebaseData).catch(err => {
+        console.error('Erro ao salvar tracking no Firebase:', err.message);
+      });
+    }
+
+    res.json({ 
+      success: true,
+      geo: geo.success ? {
+        country: geo.country_name,
+        region: geo.region,
+        city: geo.city,
+        timezone: geo.timezone,
+        localTime: localTimeInfo.localTimeString,
+        hour: localTimeInfo.hourLocal
+      } : null
+    });
   } catch (error) {
     console.error('Erro ao processar tracking:', error);
-    res.status(500).json({ error: 'Erro ao processar tracking' });
+    res.json({ success: true }); // Sempre retornar sucesso para não quebrar o app
+  }
+});
+
+// ========== ENDPOINTS DE ANALYTICS ==========
+
+// Endpoint para estatísticas por horário do dia
+app.get('/api/analytics/hours', async (req, res) => {
+  try {
+    const { adId, country } = req.query;
+
+    const filters = {};
+    if (adId) filters.adId = adId;
+    if (country) filters.countryCode = country;
+
+    const result = await firebaseTracking.getStatsByHour(filters);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas por horário:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// Endpoint para estatísticas por dia da semana
+app.get('/api/analytics/days', async (req, res) => {
+  try {
+    const { adId, country } = req.query;
+
+    const filters = {};
+    if (adId) filters.adId = adId;
+    if (country) filters.countryCode = country;
+
+    const result = await firebaseTracking.getStatsByDay(filters);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas por dia:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// Endpoint para estatísticas por país
+app.get('/api/analytics/countries', async (req, res) => {
+  try {
+    const { adId } = req.query;
+
+    const filters = {};
+    if (adId) filters.adId = adId;
+
+    const result = await firebaseTracking.getStatsByCountry(filters);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas por país:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// Endpoint completo com geolocalização E horário
+app.get('/api/analytics/geolocation', async (req, res) => {
+  try {
+    const { adId, startDate, endDate, country, hour } = req.query;
+
+    const filters = {};
+    if (adId) filters.adId = adId;
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+    if (country) filters.countryCode = country;
+    if (hour !== undefined) filters.hourLocal = parseInt(hour);
+
+    const result = await firebaseTracking.getGeolocationStats(filters);
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Erro ao buscar analytics:', error);
+    res.status(500).json({ error: 'Erro ao buscar dados' });
   }
 });
 
