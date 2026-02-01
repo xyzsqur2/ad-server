@@ -1090,8 +1090,20 @@ app.post('/track', async (req, res) => {
     // Obter IP do cliente
     const clientIP = getClientIP(req);
     
+    // Log do IP para debug (útil para identificar IPs privados)
+    if (clientIP && (clientIP.startsWith('10.') || clientIP.startsWith('192.168.') || clientIP.startsWith('172.'))) {
+      console.log(`⚠️ IP privado detectado: ${clientIP} - Geolocalização não será possível`);
+    }
+    
     // Obter geolocalização por IP (síncrono, rápido)
     const geo = ipGeoService.getLocationByIP(clientIP);
+    
+    // Log do resultado da geolocalização
+    if (!geo.success) {
+      console.log(`⚠️ Geolocalização falhou para IP ${clientIP}: ${geo.reason || 'unknown'}`);
+    } else {
+      console.log(`✅ Geolocalização OK: ${geo.country_name} (${geo.country_code}) - IP: ${clientIP}`);
+    }
     
     // Timestamp UTC atual
     const utcNow = new Date();
