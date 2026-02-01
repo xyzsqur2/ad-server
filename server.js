@@ -32,17 +32,22 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 // Função para verificar se origin é permitida
 function isAllowedOrigin(origin) {
-  // Se origin for undefined (curl, server-to-server), permitir
-  if (!origin) {
+  // Se origin for undefined/null (curl, server-to-server, file://), permitir
+  if (!origin || origin === 'null' || origin === 'file://') {
     return true;
   }
   
-  // Verificar se está na lista de origens permitidas (inclui padrões do Capacitor)
+  // Se ALLOWED_ORIGINS não estiver configurado, permitir tudo (modo dev/produção flexível)
+  if (!process.env.ALLOWED_ORIGINS) {
+    return true;
+  }
+  
+  // Se ALLOWED_ORIGINS estiver configurado, verificar se está na lista
   if (allowedOrigins.length > 0) {
     return allowedOrigins.includes(origin);
   }
   
-  // Se nenhuma origem configurada: permitir tudo (modo dev)
+  // Fallback: permitir tudo
   return true;
 }
 
@@ -52,11 +57,13 @@ const corsOptions = {
     if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
+      // Log para debug
+      console.warn(`⚠️ CORS bloqueado para origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'x-admin-token'],
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length'],
   credentials: false,
   maxAge: 86400
@@ -1437,10 +1444,10 @@ app.listen(PORT, () => {
   console.log(`📡 Health: http://localhost:${PORT}/health`);
   console.log(`📢 Próximo anúncio: http://localhost:${PORT}/ad/next`);
   
-  if (allowedOrigins.length > 0) {
+  if (process.env.ALLOWED_ORIGINS) {
     console.log(`🔒 CORS restrito para: ${allowedOrigins.join(', ')}`);
   } else {
-    console.log(`🌐 CORS permitindo todas as origens (modo dev)`);
+    console.log(`🌐 CORS permitindo todas as origens (ALLOWED_ORIGINS não configurado)`);
   }
   
   console.log(`\n📝 Exemplo de configuração ALLOWED_ORIGINS:`);
