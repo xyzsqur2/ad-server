@@ -1082,27 +1082,62 @@ app.get('/video/:id', (req, res) => {
   }
 });
 
-// Tracking de eventos (ATUALIZADO COM GEOLOCALIZAÇÃO E HORÁRIO)
+// Tracking de eventos (ATUALIZADO COM GEOLOCALIZAÇÃO DO CLIENTE E HORÁRIO)
 app.post('/track', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   
   try {
-    // Obter IP do cliente
-    const clientIP = getClientIP(req);
+    // PRIORIDADE 1: Usar IP público do cliente se fornecido (mais confiável)
+    let clientIP = req.body.clientGeo?.ipAddress;
     
-    // Log do IP para debug (útil para identificar IPs privados)
-    if (clientIP && (clientIP.startsWith('10.') || clientIP.startsWith('192.168.') || clientIP.startsWith('172.'))) {
-      console.log(`⚠️ IP privado detectado: ${clientIP} - Geolocalização não será possível`);
+    // PRIORIDADE 2: Usar IP detectado pelo servidor
+    if (!clientIP) {
+      clientIP = getClientIP(req);
     }
     
-    // Obter geolocalização por IP (síncrono, rápido)
-    const geo = ipGeoService.getLocationByIP(clientIP);
+    // Log do IP para debug
+    if (clientIP && (clientIP.startsWith('10.') || clientIP.startsWith('192.168.') || clientIP.startsWith('172.'))) {
+      console.log(`⚠️ IP privado detectado: ${clientIP} - Tentando geolocalização por GPS se disponível`);
+    }
     
-    // Log do resultado da geolocalização
+    // PRIORIDADE 1: Usar GPS do cliente se disponível (mais preciso)
+    let geo = { success: false };
+    let geoSource = 'none';
+    
+    if (req.body.clientGeo?.latitude && req.body.clientGeo?.longitude) {
+      // GPS do cliente disponível - usar para coordenadas precisas
+      console.log(`✅ GPS do cliente disponível: ${req.body.clientGeo.latitude}, ${req.body.clientGeo.longitude}`);
+      
+      // Tentar geolocalização por IP para obter país/região (GPS não fornece isso diretamente)
+      geo = ipGeoService.getLocationByIP(clientIP);
+      
+      // Se geolocalização por IP funcionar, usar coordenadas GPS do cliente
+      if (geo.success) {
+        geo.latitude = req.body.clientGeo.latitude;
+        geo.longitude = req.body.clientGeo.longitude;
+        geo.source = 'client_gps';
+        geoSource = 'client_gps';
+      }
+    }
+    
+    // PRIORIDADE 2: Geolocalização por IP (se GPS não disponível)
+    if (!geo.success) {
+      geo = ipGeoService.getLocationByIP(clientIP);
+      geoSource = geo.success ? 'ip' : 'none';
+      
+      // Se falhar, tentar API externa como fallback
+      if (!geo.success && process.env.USE_IP_API === 'true') {
+        console.log(`🔄 Tentando API externa para IP ${clientIP}...`);
+        geo = await ipGeoService.getLocationByIPExternal(clientIP);
+        geoSource = geo.success ? 'ip_api' : 'none';
+      }
+    }
+    
+    // Log do resultado
     if (!geo.success) {
       console.log(`⚠️ Geolocalização falhou para IP ${clientIP}: ${geo.reason || 'unknown'}`);
     } else {
-      console.log(`✅ Geolocalização OK: ${geo.country_name} (${geo.country_code}) - IP: ${clientIP}`);
+      console.log(`✅ Geolocalização OK: ${geo.country_name} (${geo.country_code}) - IP: ${clientIP} - Fonte: ${geoSource}`);
     }
     
     // Timestamp UTC atual
@@ -1137,16 +1172,19 @@ app.post('/track', async (req, res) => {
         localTimeString: localTimeInfo.localTimeString, // String legível
         hourLocal: localTimeInfo.hourLocal, // Hora (0-23)
         dayOfWeek: localTimeInfo.dayOfWeek, // Dia da semana (0-6)
-        ipAddress: geo.ip,
-        countryCode: geo.country_code,
+        ipAddress: clientIP, // IP público do cliente
+        countryCode: geo.country_code, // ✅ SEMPRE terá countryCode quando geo.success
         countryName: geo.country_name,
         region: geo.region,
         city: geo.city,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
+        latitude: geo.latitude, // GPS do cliente se disponível
+        longitude: geo.longitude, // GPS do cliente se disponível
         timezone: geo.timezone,
-        deviceInfo: req.body.device_info || null,
-        userAgent: req.get('user-agent') || null,
+        geoSource: geoSource, // Fonte da geolocalização (client_gps, ip, ip_api)
+        deviceInfo: req.body.clientGeo?.device || req.body.device_info || null,
+        screenWidth: req.body.clientGeo?.screenWidth || null,
+        screenHeight: req.body.clientGeo?.screenHeight || null,
+        userAgent: req.body.clientGeo?.userAgent || req.get('user-agent') || null,
         eventData: trackingData,
         createdAt: utcNow.toISOString()
       };
@@ -1158,6 +1196,7 @@ app.post('/track', async (req, res) => {
       });
     } else {
       // Tentar salvar mesmo sem geolocalização (IP inválido ou não encontrado)
+      // Mas agora temos IP público do cliente, então podemos tentar geolocalização retroativa depois
       const firebaseData = {
         event: trackingData.event,
         adId: trackingData.adId || null,
@@ -1167,10 +1206,14 @@ app.post('/track', async (req, res) => {
         localTimeString: localTimeInfo.localTimeString,
         hourLocal: localTimeInfo.hourLocal,
         dayOfWeek: localTimeInfo.dayOfWeek,
-        ipAddress: clientIP,
-        userAgent: req.get('user-agent') || null,
+        ipAddress: clientIP, // IP público do cliente (útil para migração futura)
+        deviceInfo: req.body.clientGeo?.device || req.body.device_info || null,
+        screenWidth: req.body.clientGeo?.screenWidth || null,
+        screenHeight: req.body.clientGeo?.screenHeight || null,
+        userAgent: req.body.clientGeo?.userAgent || req.get('user-agent') || null,
         eventData: trackingData,
         createdAt: utcNow.toISOString()
+        // ⚠️ Sem countryCode - mas agora temos IP público para tentar geolocalização retroativa
       };
 
       firebaseTracking.saveTracking(firebaseData).catch(err => {
@@ -1186,7 +1229,8 @@ app.post('/track', async (req, res) => {
         city: geo.city,
         timezone: geo.timezone,
         localTime: localTimeInfo.localTimeString,
-        hour: localTimeInfo.hourLocal
+        hour: localTimeInfo.hourLocal,
+        source: geoSource
       } : null
     });
   } catch (error) {
@@ -1280,6 +1324,110 @@ app.get('/api/analytics/geolocation', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar analytics:', error);
     res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// ========== ENDPOINT DE MIGRAÇÃO ==========
+
+// Endpoint para migrar dados antigos (adicionar geolocalização retroativa)
+app.post('/api/admin/migrate-geolocation', async (req, res) => {
+  try {
+    // Verificar autenticação (usar token simples ou variável de ambiente)
+    const authToken = req.headers['x-admin-token'];
+    const expectedToken = process.env.ADMIN_TOKEN || 'migration-token-2026';
+    
+    if (authToken !== expectedToken) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Não autorizado. Forneça header x-admin-token.' 
+      });
+    }
+
+    console.log('🔄 Iniciando migração de geolocalização...');
+    
+    // Buscar todos os registros do Firebase
+    const { data } = await firebaseTracking.getTracking({ limit: 10000 });
+    console.log(`📊 Total de registros encontrados: ${data.length}`);
+    
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+    
+    for (const item of data) {
+      // Pular se já tem countryCode
+      if (item.countryCode || item.country_code) {
+        skipped++;
+        continue;
+      }
+      
+      // Tentar geolocalizar usando IP
+      const ip = item.ipAddress || item.ip_address;
+      if (!ip || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1' || 
+          ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.')) {
+        skipped++;
+        continue;
+      }
+      
+      // Obter geolocalização
+      const geo = ipGeoService.getLocationByIP(ip);
+      
+      if (geo.success) {
+        const updateData = {
+          countryCode: geo.country_code,
+          countryName: geo.country_name,
+          region: geo.region,
+          city: geo.city,
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+          timezone: geo.timezone,
+          geoSource: 'migration' // Marcar como migrado
+        };
+        
+        try {
+          const result = await firebaseTracking.updateTracking(item.id, updateData);
+          if (result.success) {
+            updated++;
+            if (updated % 10 === 0) {
+              console.log(`✅ Progresso: ${updated} atualizados, ${skipped} ignorados, ${errors} erros`);
+            }
+          } else {
+            errors++;
+            console.error(`❌ Erro ao atualizar ${item.id}:`, result.error);
+          }
+        } catch (err) {
+          errors++;
+          console.error(`❌ Erro ao atualizar ${item.id}:`, err.message);
+        }
+      } else {
+        skipped++;
+      }
+      
+      // Pequeno delay para não sobrecarregar
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    console.log('\n📊 Resumo da migração:');
+    console.log(`   ✅ Atualizados: ${updated}`);
+    console.log(`   ⏭️  Ignorados: ${skipped}`);
+    console.log(`   ❌ Erros: ${errors}`);
+    
+    res.json({
+      success: true,
+      stats: {
+        total: data.length,
+        updated,
+        skipped,
+        errors
+      },
+      message: `Migração concluída: ${updated} registros atualizados com geolocalização`
+    });
+  } catch (error) {
+    console.error('❌ Erro na migração:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      message: 'Erro ao executar migração. Verifique os logs do servidor.'
+    });
   }
 });
 

@@ -107,6 +107,30 @@ export class FirebaseTrackingService {
   }
 
   /**
+   * Atualiza um registro existente no Firebase
+   * @param {string} id - ID do registro
+   * @param {Object} updateData - Dados para atualizar
+   */
+  async updateTracking(id, updateData) {
+    if (this._disabled) {
+      return { success: false, reason: 'firebase_disabled' };
+    }
+
+    try {
+      const ref = this.database.ref(`ad_tracking/${id}`);
+      await ref.update(updateData);
+      
+      return {
+        success: true,
+        id: id
+      };
+    } catch (error) {
+      console.error('❌ Erro ao atualizar tracking no Firebase:', error);
+      return { success: false, reason: 'firebase_error', error: error.message };
+    }
+  }
+
+  /**
    * Busca eventos de tracking com filtros
    */
   async getTracking(filters = {}) {
