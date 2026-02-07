@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { IPGeolocationService } from './services/ip-geolocation.service.js';
 import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
+import { ActivationKeysService } from './services/activation-keys.service.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -96,7 +97,8 @@ app.use(express.json());
 
 // ========== SERVIÇOS ==========
 const ipGeoService = new IPGeolocationService();
-const firebaseTracking = new FirebaseTrackingService();
+const firebaseTracking = new FirebaseTrackingService(); // Inicializa Firebase 'ad-tracking'
+const activationKeys = new ActivationKeysService();
 
 // Função auxiliar para gerar ID
 function generateId() {
@@ -1331,6 +1333,48 @@ app.get('/api/analytics/geolocation', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar analytics:', error);
     res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// ========== CHAVES DE ATIVAÇÃO (Firebase activation_keys/<KEY>) ==========
+
+// Criar chave (Dashboard): chave como id do nó
+app.post('/api/activation-keys', async (req, res) => {
+  try {
+    const { key } = req.body || {};
+    const result = await activationKeys.addKey(key);
+    if (result.success) {
+      return res.status(201).json({ success: true, key: result.key });
+    }
+    const status = result.error === 'invalid_key' || result.error === 'duplicate_key' ? 400 : 500;
+    return res.status(status).json({
+      success: false,
+      error: result.error,
+      message: result.message || result.error
+    });
+  } catch (error) {
+    console.error('[activation-keys] Erro ao criar chave:', error);
+    return res.status(500).json({ success: false, error: 'server_error', message: error.message });
+  }
+});
+
+// Reivindicar chave (App): busca uma disponível e marca como claimed (deviceId opcional: ?deviceId=xxx)
+app.get('/api/activation-keys/claim', async (req, res) => {
+  try {
+    const deviceId = req.query.deviceId || null;
+    const result = await activationKeys.claimKey(deviceId);
+    if (result.success) {
+      return res.json({ success: true, key: result.key });
+    }
+    const status = result.error === 'no_keys_available' ? 404 : 500;
+    return res.status(status).json({
+      success: false,
+      error: result.error,
+      message: result.message || result.error
+    });
+  } catch (error) {
+    console.error('[activation-keys] Erro ao reivindicar chave:', error);
+    return res.status(500).json({ success: false, error: 'server_error', message: error.message });
   }
 });
 
