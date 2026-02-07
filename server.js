@@ -97,8 +97,11 @@ app.use(express.json());
 
 // ========== SERVIÇOS ==========
 const ipGeoService = new IPGeolocationService();
-const firebaseTracking = new FirebaseTrackingService(); // Inicializa Firebase 'ad-tracking'
-const activationKeys = new ActivationKeysService();
+const firebaseTracking = new FirebaseTrackingService(); // Inicializa Firebase 'ad-tracking' PRIMEIRO
+const activationKeys = new ActivationKeysService(); // Usa a mesma app 'ad-tracking'
+
+// Diagnóstico: verificar se ActivationKeys está operacional
+console.log(`📊 ActivationKeys status: ${activationKeys._disabled ? '❌ DESABILITADO' : '✅ OPERACIONAL'}`);
 
 // Função auxiliar para gerar ID
 function generateId() {
@@ -1362,20 +1365,33 @@ app.post('/api/activation-keys', async (req, res) => {
 app.get('/api/activation-keys/claim', async (req, res) => {
   const origin = req.get('origin') || 'no-origin';
   console.log('[Activation] GET /api/activation-keys/claim | Origin:', origin);
+  
+  // Verificar se serviço está disponível
+  if (activationKeys._disabled) {
+    console.error('[Activation] ❌ Serviço DESABILITADO - Firebase não inicializado');
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Serviço de ativação indisponível (Firebase não inicializado)'
+    });
+  }
+  
   try {
     const deviceId = req.query.deviceId || null;
     const result = await activationKeys.claimKey(deviceId);
     if (result.success) {
+      console.log(`[Activation] ✅ Chave fornecida: ${result.key}`);
       return res.json({ success: true, key: result.key });
     }
     const status = result.error === 'no_keys_available' ? 404 : 500;
+    console.warn(`[Activation] ⚠️ Claim falhou: ${result.error} - ${result.message}`);
     return res.status(status).json({
       success: false,
       error: result.error,
       message: result.message || result.error
     });
   } catch (error) {
-    console.error('[activation-keys] Erro ao reivindicar chave:', error);
+    console.error('[Activation] ❌ Exceção ao reivindicar chave:', error);
     return res.status(500).json({ success: false, error: 'server_error', message: error.message });
   }
 });

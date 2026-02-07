@@ -2,6 +2,8 @@
  * Serviço de Chaves de Ativação - Firebase Realtime Database
  * Estrutura: activation_keys/<KEY_ID> = { status, createdAt, claimedAt, deviceId }
  * Opção A: chave como id do nó (ex.: activation_keys/AB12CD34)
+ * 
+ * IMPORTANTE: Usa a mesma instância do Firebase Admin (app 'ad-tracking') que o FirebaseTrackingService.
  */
 
 import admin from 'firebase-admin';
@@ -12,14 +14,18 @@ const FIREBASE_PATH = 'activation_keys';
 
 export class ActivationKeysService {
   constructor() {
+    // Verificar se Firebase Admin foi inicializado (pelo FirebaseTrackingService)
     try {
+      // Tentar obter a app 'ad-tracking' existente
       const app = admin.app('ad-tracking');
       this.database = admin.database(app);
       this._disabled = false;
+      console.log('✅ ActivationKeys: Firebase Admin conectado (app: ad-tracking)');
     } catch (e) {
       this.database = null;
       this._disabled = true;
-      console.log('ℹ️  ActivationKeys: Firebase não disponível (ad-tracking não inicializado).');
+      console.error('❌ ActivationKeys: Firebase não disponível (ad-tracking não inicializado):', e.message);
+      console.error('   O FirebaseTrackingService deve ser instanciado ANTES de ActivationKeysService');
     }
   }
 
@@ -39,7 +45,8 @@ export class ActivationKeysService {
    */
   async addKey(key) {
     if (this._disabled) {
-      return { success: false, error: 'firebase_unavailable' };
+      console.error('[ActivationKeys] Serviço desabilitado - Firebase não disponível');
+      return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
     }
 
     const normalized = this._normalizeKey(key);
@@ -48,9 +55,11 @@ export class ActivationKeysService {
     }
 
     try {
+      console.log(`[ActivationKeys] Criando chave: ${normalized}`);
       const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
       const snapshot = await ref.once('value');
       if (snapshot.exists()) {
+        console.warn(`[ActivationKeys] Chave ${normalized} já existe`);
         return { success: false, error: 'duplicate_key', message: 'Chave já existe' };
       }
 
@@ -61,10 +70,10 @@ export class ActivationKeysService {
         deviceId: null
       });
 
-      console.log(`[ActivationKeys] Chave criada: ${normalized}`);
+      console.log(`[ActivationKeys] ✅ Chave criada: ${normalized}`);
       return { success: true, key: normalized };
     } catch (error) {
-      console.error('[ActivationKeys] Erro ao criar chave:', error);
+      console.error('[ActivationKeys] ❌ Erro ao criar chave:', error);
       return { success: false, error: 'firebase_error', message: error.message };
     }
   }
@@ -76,24 +85,34 @@ export class ActivationKeysService {
    */
   async claimKey(deviceId = null) {
     if (this._disabled) {
-      return { success: false, error: 'firebase_unavailable' };
+      console.error('[ActivationKeys] Serviço desabilitado - Firebase não disponível');
+      return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
     }
 
     try {
+      console.log(`[ActivationKeys] Buscando chave disponível...`);
       const ref = this.database.ref(FIREBASE_PATH);
       const snapshot = await ref.once('value');
+      
       if (!snapshot.exists()) {
-        return { success: false, error: 'no_keys_available' };
+        console.warn('[ActivationKeys] Nenhuma chave encontrada no Firebase (path vazio)');
+        return { success: false, error: 'no_keys_available', message: 'Nenhuma chave disponível' };
       }
 
       const data = snapshot.val();
+      console.log(`[ActivationKeys] Chaves encontradas:`, Object.keys(data || {}));
+      
       const entries = Object.entries(data || {});
       const available = entries.find(([_, v]) => v && v.status === 'available');
+      
       if (!available) {
-        return { success: false, error: 'no_keys_available' };
+        console.warn('[ActivationKeys] Nenhuma chave com status "available"');
+        return { success: false, error: 'no_keys_available', message: 'Nenhuma chave disponível' };
       }
 
       const [keyId, keyData] = available;
+      console.log(`[ActivationKeys] Chave disponível encontrada: ${keyId}`, keyData);
+      
       const keyRef = this.database.ref(`${FIREBASE_PATH}/${keyId}`);
       await keyRef.update({
         status: 'claimed',
@@ -101,10 +120,10 @@ export class ActivationKeysService {
         deviceId: deviceId || null
       });
 
-      console.log(`[ActivationKeys] Chave reivindicada: ${keyId}${deviceId ? ' deviceId=' + deviceId : ''}`);
+      console.log(`[ActivationKeys] ✅ Chave reivindicada: ${keyId}${deviceId ? ' deviceId=' + deviceId : ''}`);
       return { success: true, key: keyId };
     } catch (error) {
-      console.error('[ActivationKeys] Erro ao reivindicar chave:', error);
+      console.error('[ActivationKeys] ❌ Erro ao reivindicar chave:', error);
       return { success: false, error: 'firebase_error', message: error.message };
     }
   }
