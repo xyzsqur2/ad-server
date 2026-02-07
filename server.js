@@ -1360,6 +1360,8 @@ app.post('/api/activation-keys', async (req, res) => {
 
 // Reivindicar chave (App): busca uma disponível e marca como claimed (deviceId opcional: ?deviceId=xxx)
 app.get('/api/activation-keys/claim', async (req, res) => {
+  const origin = req.get('origin') || 'no-origin';
+  console.log('[Activation] GET /api/activation-keys/claim | Origin:', origin);
   try {
     const deviceId = req.query.deviceId || null;
     const result = await activationKeys.claimKey(deviceId);
