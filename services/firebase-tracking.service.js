@@ -45,14 +45,19 @@ function initializeFirebase() {
 
     const serviceAccount = JSON.parse(readFileSync(fullPath, 'utf8'));
 
+    const DEFAULT_DATABASE_URL = 'https://notification-sistem-default-rtdb.asia-southeast1.firebasedatabase.app';
+    const databaseURL = process.env.FIREBASE_DATABASE_URL
+      || serviceAccount.databaseURL
+      || DEFAULT_DATABASE_URL;
+
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       projectId: serviceAccount.project_id,
-      databaseURL: serviceAccount.databaseURL || 'https://notification-sistem-default-rtdb.asia-southeast1.firebasedatabase.app'
+      databaseURL
     }, 'ad-tracking');
 
     database = admin.database(firebaseApp);
-    console.log('✅ Firebase Admin inicializado para tracking');
+    console.log('✅ Firebase Admin inicializado para tracking | databaseURL:', databaseURL);
     return { app: firebaseApp, database };
   } catch (error) {
     console.error('❌ Erro ao inicializar Firebase Admin:', error.message);
