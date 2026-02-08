@@ -1423,6 +1423,7 @@ app.post('/api/activation-keys/validate-and-claim', async (req, res) => {
   }
   try {
     const { key, deviceId } = req.body || {};
+    console.log('[Activation] validate-and-claim | chave inserida pelo usuário:', key, '| (tipo:', typeof key, ')');
     const result = await activationKeys.claimKeyByValue(key, deviceId || null);
     if (result.success) {
       return res.json({ success: true, key: result.key });

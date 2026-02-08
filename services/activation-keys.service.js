@@ -153,11 +153,20 @@ export class ActivationKeysService {
     }
 
     const normalized = this._normalizeKey(key);
+    console.log('[ActivationKeys] Chave inserida pelo usuário (raw):', key, '| normalizada:', normalized);
     if (!normalized || !KEY_REGEX.test(normalized)) {
       return { success: false, error: 'invalid_key', message: 'Chave inválida' };
     }
 
     try {
+      const rootRef = this.database.ref(FIREBASE_PATH);
+      const snapshot = await rootRef.once('value');
+      const all = snapshot.val() || {};
+      const availableKeys = Object.entries(all).filter(([, v]) => v && v.status === 'available').map(([k]) => k);
+      console.log('[ActivationKeys] Chaves disponíveis no Firebase:', availableKeys.length ? availableKeys : '(nenhuma)');
+      const valueAtKey = all[normalized] ? { status: all[normalized].status, createdAt: all[normalized].createdAt } : null;
+      console.log('[ActivationKeys] No Firebase, nó da chave informada (' + normalized + '):', valueAtKey || '(nó não existe)');
+
       const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
       const claimed = await new Promise((resolve) => {
         ref.transaction((current) => {
