@@ -1340,9 +1340,24 @@ app.get('/api/analytics/geolocation', async (req, res) => {
 });
 
 // ========== CHAVES DE ATIVAÇÃO (Firebase activation_keys/<KEY>) ==========
+// Headers para WebView: sempre JSON e no-store
+function setActivationHeaders(res) {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/json; charset=utf-8');
+}
+
+// Diagnóstico: verifica se Firebase Admin está ativo (para testar no APK/navegador)
+app.get('/api/activation-keys/status', (req, res) => {
+  setActivationHeaders(res);
+  res.json({
+    success: true,
+    activationKeysEnabled: !activationKeys._disabled
+  });
+});
 
 // Criar chave (Dashboard): chave como id do nó
 app.post('/api/activation-keys', async (req, res) => {
+  setActivationHeaders(res);
   try {
     const { key } = req.body || {};
     const result = await activationKeys.addKey(key);
@@ -1363,35 +1378,35 @@ app.post('/api/activation-keys', async (req, res) => {
 
 // Reivindicar chave (App): busca uma disponível e marca como claimed (deviceId opcional: ?deviceId=xxx)
 app.get('/api/activation-keys/claim', async (req, res) => {
+  setActivationHeaders(res);
   const origin = req.get('origin') || 'no-origin';
   console.log('[Activation] GET /api/activation-keys/claim | Origin:', origin);
-  
-  // Verificar se serviço está disponível
+
   if (activationKeys._disabled) {
-    console.error('[Activation] ❌ Serviço DESABILITADO - Firebase não inicializado');
+    console.error('[Activation] Servico DESABILITADO - Firebase nao inicializado');
     return res.status(503).json({
       success: false,
       error: 'service_unavailable',
-      message: 'Serviço de ativação indisponível (Firebase não inicializado)'
+      message: 'Servico de ativacao indisponivel (Firebase nao inicializado)'
     });
   }
-  
+
   try {
     const deviceId = req.query.deviceId || null;
     const result = await activationKeys.claimKey(deviceId);
     if (result.success) {
-      console.log(`[Activation] ✅ Chave fornecida: ${result.key}`);
+      console.log('[Activation] Chave fornecida: ' + result.key);
       return res.json({ success: true, key: result.key });
     }
     const status = result.error === 'no_keys_available' ? 404 : 500;
-    console.warn(`[Activation] ⚠️ Claim falhou: ${result.error} - ${result.message}`);
+    console.warn('[Activation] Claim falhou: ' + result.error + ' - ' + result.message);
     return res.status(status).json({
       success: false,
       error: result.error,
       message: result.message || result.error
     });
   } catch (error) {
-    console.error('[Activation] ❌ Exceção ao reivindicar chave:', error);
+    console.error('[Activation] Excecao ao reivindicar chave:', error);
     return res.status(500).json({ success: false, error: 'server_error', message: error.message });
   }
 });

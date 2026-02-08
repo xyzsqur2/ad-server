@@ -79,7 +79,7 @@ export class ActivationKeysService {
   }
 
   /**
-   * Reivindica uma chave disponível (App). Busca uma com status 'available', marca como 'claimed'.
+   * Reivindica uma chave disponível (App). Claim atômico via transaction para evitar disputa.
    * @param {string} [deviceId] - Id do dispositivo (opcional)
    * @returns {Promise<{ success: boolean, key?: string, error?: string }>}
    */
@@ -90,40 +90,52 @@ export class ActivationKeysService {
     }
 
     try {
-      console.log(`[ActivationKeys] Buscando chave disponível...`);
+      console.log('[ActivationKeys] Claim atômico (transaction)...');
       const ref = this.database.ref(FIREBASE_PATH);
-      const snapshot = await ref.once('value');
-      
-      if (!snapshot.exists()) {
-        console.warn('[ActivationKeys] Nenhuma chave encontrada no Firebase (path vazio)');
-        return { success: false, error: 'no_keys_available', message: 'Nenhuma chave disponível' };
-      }
-
-      const data = snapshot.val();
-      console.log(`[ActivationKeys] Chaves encontradas:`, Object.keys(data || {}));
-      
-      const entries = Object.entries(data || {});
-      const available = entries.find(([_, v]) => v && v.status === 'available');
-      
-      if (!available) {
-        console.warn('[ActivationKeys] Nenhuma chave com status "available"');
-        return { success: false, error: 'no_keys_available', message: 'Nenhuma chave disponível' };
-      }
-
-      const [keyId, keyData] = available;
-      console.log(`[ActivationKeys] Chave disponível encontrada: ${keyId}`, keyData);
-      
-      const keyRef = this.database.ref(`${FIREBASE_PATH}/${keyId}`);
-      await keyRef.update({
-        status: 'claimed',
-        claimedAt: new Date().toISOString(),
-        deviceId: deviceId || null
+      const claimedKeyId = await new Promise((resolve, reject) => {
+        ref.transaction((current) => {
+          if (current == null) return undefined;
+          const entries = Object.entries(current);
+          const available = entries.find(([, v]) => v && v.status === 'available');
+          if (!available) return undefined;
+          const [keyId, keyData] = available;
+          const updated = { ...current };
+          updated[keyId] = {
+            ...keyData,
+            status: 'claimed',
+            claimedAt: new Date().toISOString(),
+            deviceId: deviceId || null
+          };
+          return updated;
+        }, (err, committed, snapshot) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          if (!committed || !snapshot || !snapshot.val()) {
+            resolve(null);
+            return;
+          }
+          const data = snapshot.val();
+          const now = Date.now();
+          const claimedEntries = Object.entries(data || {}).filter(
+            ([, v]) => v && v.status === 'claimed' && v.claimedAt && (now - new Date(v.claimedAt).getTime() < 5000)
+          );
+          const mostRecent = claimedEntries.sort(
+            (a, b) => new Date(b[1].claimedAt).getTime() - new Date(a[1].claimedAt).getTime()
+          )[0];
+          resolve(mostRecent ? mostRecent[0] : null);
+        });
       });
 
-      console.log(`[ActivationKeys] ✅ Chave reivindicada: ${keyId}${deviceId ? ' deviceId=' + deviceId : ''}`);
-      return { success: true, key: keyId };
+      if (claimedKeyId) {
+        console.log('[ActivationKeys] Chave reivindicada (transaction): ' + claimedKeyId + (deviceId ? ' deviceId=' + deviceId : ''));
+        return { success: true, key: claimedKeyId };
+      }
+      console.warn('[ActivationKeys] Nenhuma chave disponível (transaction abortou ou sem available)');
+      return { success: false, error: 'no_keys_available', message: 'Nenhuma chave disponível' };
     } catch (error) {
-      console.error('[ActivationKeys] ❌ Erro ao reivindicar chave:', error);
+      console.error('[ActivationKeys] Erro ao reivindicar chave:', error);
       return { success: false, error: 'firebase_error', message: error.message };
     }
   }
