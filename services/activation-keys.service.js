@@ -167,35 +167,22 @@ export class ActivationKeysService {
       const valueAtKey = all[normalized] ? { status: all[normalized].status, createdAt: all[normalized].createdAt } : null;
       console.log('[ActivationKeys] No Firebase, nó da chave informada (' + normalized + '):', valueAtKey || '(nó não existe)');
 
+      const current = all[normalized];
+      if (!current || current.status !== 'available') {
+        console.warn('[ActivationKeys] Chave não disponível para claim:', normalized, current ? current.status : 'inexistente');
+        return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+      }
+
       const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
-      const claimed = await new Promise((resolve) => {
-        ref.transaction((current) => {
-          if (current == null) return undefined;
-          if (current.status === 'available') {
-            return {
-              ...current,
-              status: 'claimed',
-              claimedAt: new Date().toISOString(),
-              deviceId: deviceId || null
-            };
-          }
-          // Firebase pode reexecutar o callback com dados já atualizados; manter como está para não abortar
-          return current;
-        }, (err, committed) => {
-          if (err) {
-            console.error('[ActivationKeys] Transaction error:', err);
-            resolve(false);
-            return;
-          }
-          resolve(!!committed);
-        });
+      await ref.set({
+        ...current,
+        status: 'claimed',
+        claimedAt: new Date().toISOString(),
+        deviceId: deviceId || null
       });
 
-      if (claimed) {
-        console.log('[ActivationKeys] Chave validada e reivindicada: ' + normalized + (deviceId ? ' deviceId=' + deviceId : ''));
-        return { success: true, key: normalized };
-      }
-      return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+      console.log('[ActivationKeys] Chave validada e reivindicada: ' + normalized + (deviceId ? ' deviceId=' + deviceId : ''));
+      return { success: true, key: normalized };
     } catch (error) {
       console.error('[ActivationKeys] Erro ao validar/reivindicar chave:', error);
       return { success: false, error: 'firebase_error', message: 'Chave inválida' };
