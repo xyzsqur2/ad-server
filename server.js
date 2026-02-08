@@ -1361,6 +1361,24 @@ app.get('/api/activation-keys/status', (req, res) => {
   });
 });
 
+// Listar todas as chaves do Firebase (Dashboard - campos: status, createdAt, claimedAt, deviceId)
+app.get('/api/activation-keys/list', async (req, res) => {
+  setActivationHeaders(res);
+  if (activationKeys._disabled) {
+    return res.status(503).json({ success: false, error: 'service_unavailable', keys: null });
+  }
+  try {
+    const result = await activationKeys.listKeys();
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error || 'firebase_error', keys: null });
+    }
+    return res.json({ success: true, keys: result.keys || {} });
+  } catch (error) {
+    console.error('[activation-keys] list:', error);
+    return res.status(500).json({ success: false, error: error.message, keys: null });
+  }
+});
+
 // Criar chave (Dashboard): chave como id do nó
 app.post('/api/activation-keys', async (req, res) => {
   setActivationHeaders(res);

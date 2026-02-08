@@ -30,6 +30,25 @@ export class ActivationKeysService {
   }
 
   /**
+   * Lista todas as chaves do Firebase (para o Dashboard).
+   * @returns {Promise<{ success: boolean, keys?: Record<string, { status, createdAt, claimedAt, deviceId }>, error?: string }>}
+   */
+  async listKeys() {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable', keys: null };
+    }
+    try {
+      const ref = this.database.ref(FIREBASE_PATH);
+      const snapshot = await ref.once('value');
+      const keys = snapshot.val() || {};
+      return { success: true, keys };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao listar chaves:', error);
+      return { success: false, error: error.message, keys: null };
+    }
+  }
+
+  /**
    * Normaliza chave para id (uppercase, trim)
    */
   _normalizeKey(key) {
