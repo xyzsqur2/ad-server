@@ -11,3 +11,8 @@
 
 ­ƒôØ Exemplo de configura├º├úo ALLOWED_ORIGINS:
    ALLOWED_ORIGINS=http://localhost:3000,capacitor://localhost,http://localhost
+[Activation] validate-and-claim | chave inserida pelo usu├írio: TESTKEY1 | (tipo: string )
+[ActivationKeys] Chave inserida pelo usu├írio (raw): TESTKEY1 | normalizada: TESTKEY1
+[ActivationKeys] Claimando chave: TESTKEY1
+[ActivationKeys] Ô£à Chave claimada com sucesso: TESTKEY1 | deviceId=device-test-001
+[POST] /api/activation-keys/validate-and-claim | Origin: no-origin | Status: 200
