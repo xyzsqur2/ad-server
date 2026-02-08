@@ -1411,6 +1411,33 @@ app.get('/api/activation-keys/claim', async (req, res) => {
   }
 });
 
+// Validar e reivindicar chave informada pelo usuário (tela de bloqueio)
+app.post('/api/activation-keys/validate-and-claim', async (req, res) => {
+  setActivationHeaders(res);
+  if (activationKeys._disabled) {
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Serviço de ativação indisponível'
+    });
+  }
+  try {
+    const { key, deviceId } = req.body || {};
+    const result = await activationKeys.claimKeyByValue(key, deviceId || null);
+    if (result.success) {
+      return res.json({ success: true, key: result.key });
+    }
+    return res.status(400).json({
+      success: false,
+      error: result.error || 'invalid_key',
+      message: result.message || 'Chave inválida'
+    });
+  } catch (error) {
+    console.error('[Activation] validate-and-claim:', error);
+    return res.status(500).json({ success: false, error: 'server_error', message: 'Chave inválida' });
+  }
+});
+
 // ========== ENDPOINT DE MIGRAÇÃO ==========
 
 // Endpoint para migrar dados antigos (adicionar geolocalização retroativa)

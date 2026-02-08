@@ -139,4 +139,53 @@ export class ActivationKeysService {
       return { success: false, error: 'firebase_error', message: error.message };
     }
   }
+
+  /**
+   * Valida e reivindica uma chave específica informada pelo usuário (tela de bloqueio).
+   * A chave deve existir no Firebase e estar com status 'available'.
+   * @param {string} key - Chave de 8 caracteres (será normalizada)
+   * @param {string} [deviceId] - Id do dispositivo (opcional)
+   * @returns {Promise<{ success: boolean, key?: string, error?: string, message?: string }>}
+   */
+  async claimKeyByValue(key, deviceId = null) {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized || !KEY_REGEX.test(normalized)) {
+      return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+    }
+
+    try {
+      const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const claimed = await new Promise((resolve) => {
+        ref.transaction((current) => {
+          if (current == null) return undefined;
+          if (current.status !== 'available') return undefined;
+          return {
+            ...current,
+            status: 'claimed',
+            claimedAt: new Date().toISOString(),
+            deviceId: deviceId || null
+          };
+        }, (err, committed) => {
+          if (err) {
+            resolve(false);
+            return;
+          }
+          resolve(!!committed);
+        });
+      });
+
+      if (claimed) {
+        console.log('[ActivationKeys] Chave validada e reivindicada: ' + normalized + (deviceId ? ' deviceId=' + deviceId : ''));
+        return { success: true, key: normalized };
+      }
+      return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao validar/reivindicar chave:', error);
+      return { success: false, error: 'firebase_error', message: 'Chave inválida' };
+    }
+  }
 }
