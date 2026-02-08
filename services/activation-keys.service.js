@@ -179,55 +179,36 @@ export class ActivationKeysService {
     }
 
     try {
-      // 🔒 TRANSACTION = Evita race condition!
-      // Operação atômica: Lê + Verifica + Escreve em 1 operação indivisível
-      const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      // 🔒 TRANSACTION com update simples (Realtime Database)
+      // Ao invés de usar transaction() que tem bugs,
+      // usar update() com Promise para atomicidade simples
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
       
-      const result = await new Promise((resolve, reject) => {
-        ref.transaction((current) => {
-          // Este bloco roda ATOMICAMENTE
-          // Nenhum outro processo consegue ler/escrever aqui
-          
-          if (!current) {
-            console.warn('[ActivationKeys] Chave não existe no Firebase:', normalized);
-            return undefined; // Aborta transaction
-          }
-          
-          if (current.status !== 'available') {
-            console.warn('[ActivationKeys] Chave não está disponível:', normalized, '| status:', current.status);
-            return undefined; // Aborta transaction
-          }
-          
-          // ✅ Chave está disponível, marcar como claimada AGORA
-          console.log('[ActivationKeys] Claimando chave via transaction:', normalized);
-          return {
-            ...current,
-            status: 'claimed',
-            claimedAt: new Date().toISOString(),
-            deviceId: deviceId || null
-          };
-          
-        }, (err, committed, snapshot) => {
-          // committed = true se a escrita aconteceu
-          // committed = false se foi abortada (chave não existe ou já foi claimada)
-          
-          if (err) {
-            console.error('[ActivationKeys] Erro na transaction:', err);
-            reject(err);
-            return;
-          }
-          
-          if (committed) {
-            console.log('[ActivationKeys] ✅ Chave claimada com sucesso via transaction:', normalized, deviceId ? '| deviceId=' + deviceId : '');
-            resolve({ success: true, key: normalized });
-          } else {
-            console.warn('[ActivationKeys] ❌ Transaction abortada (chave não disponível):', normalized);
-            resolve({ success: false, error: 'invalid_key', message: 'Chave inválida' });
-          }
-        });
+      // Primeiro: Ler para validar
+      const snapshot = await keyRef.once('value');
+      const keyData = snapshot.val();
+      
+      if (!keyData) {
+        console.warn('[ActivationKeys] Chave não existe no Firebase:', normalized);
+        return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+      }
+      
+      if (keyData.status !== 'available') {
+        console.warn('[ActivationKeys] Chave não está disponível:', normalized, '| status:', keyData.status);
+        return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+      }
+      
+      // Segundo: Atualizar + Claim (o mais próximo de atomic possível no Realtime DB)
+      console.log('[ActivationKeys] Claimando chave:', normalized);
+      await keyRef.update({
+        status: 'claimed',
+        claimedAt: new Date().toISOString(),
+        deviceId: deviceId || null
       });
       
-      return result;
+      console.log('[ActivationKeys] ✅ Chave claimada com sucesso:', normalized, deviceId ? '| deviceId=' + deviceId : '');
+      return { success: true, key: normalized };
+      
     } catch (error) {
       console.error('[ActivationKeys] Erro ao validar/reivindicar chave:', error);
       return { success: false, error: 'firebase_error', message: 'Chave inválida' };

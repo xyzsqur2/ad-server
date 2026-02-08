@@ -1,0 +1,13 @@
+[dotenv@17.2.3] injecting env (4) from .env -- tip: ­ƒöä add secrets lifecycle management: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ­ƒöä add secrets lifecycle management: https://dotenvx.com/ops
+Ô£à Firebase Admin inicializado para tracking
+Ô£à ActivationKeys: Firebase Admin conectado (app: ad-tracking)
+­ƒôè ActivationKeys status: Ô£à OPERACIONAL
+Ô£à Carregados 2 an├║ncios
+­ƒÜÇ Servidor de an├║ncios rodando na porta 3002
+­ƒôí Health: http://localhost:3002/health
+­ƒôó Pr├│ximo an├║ncio: http://localhost:3002/ad/next
+­ƒîÉ CORS permitindo todas as origens (ALLOWED_ORIGINS n├úo configurado)
+
+­ƒôØ Exemplo de configura├º├úo ALLOWED_ORIGINS:
+   ALLOWED_ORIGINS=http://localhost:3000,capacitor://localhost,http://localhost
