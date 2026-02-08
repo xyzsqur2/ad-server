@@ -171,15 +171,19 @@ export class ActivationKeysService {
       const claimed = await new Promise((resolve) => {
         ref.transaction((current) => {
           if (current == null) return undefined;
-          if (current.status !== 'available') return undefined;
-          return {
-            ...current,
-            status: 'claimed',
-            claimedAt: new Date().toISOString(),
-            deviceId: deviceId || null
-          };
+          if (current.status === 'available') {
+            return {
+              ...current,
+              status: 'claimed',
+              claimedAt: new Date().toISOString(),
+              deviceId: deviceId || null
+            };
+          }
+          // Firebase pode reexecutar o callback com dados já atualizados; manter como está para não abortar
+          return current;
         }, (err, committed) => {
           if (err) {
+            console.error('[ActivationKeys] Transaction error:', err);
             resolve(false);
             return;
           }
