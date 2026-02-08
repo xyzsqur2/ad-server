@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { IPGeolocationService } from './services/ip-geolocation.service.js';
 import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
 import { ActivationKeysService } from './services/activation-keys.service.js';
@@ -93,9 +94,57 @@ app.use((req, res, next) => {
   next();
 });
 
-
-
 app.use(express.json());
+
+// ========== RATE LIMITING ==========
+
+/**
+ * Limiter específico para endpoints de ativação
+ * - Máximo 5 tentativas por IP a cada 1 minuto
+ * - Protege contra brute force de chaves
+ */
+const activationLimiter = rateLimit({
+  windowMs: 60 * 1000,                              // 1 minuto
+  max: 5,                                           // 5 requisições por IP
+  message: 'Muitas tentativas de ativação. Tente novamente em 1 minuto.',
+  standardHeaders: true,                            // Retorna `RateLimit-*` headers
+  legacyHeaders: false,                             // Desabilita `X-RateLimit-*` headers
+  keyGenerator: (req) => getClientIP(req),          // Usar IP real (com proxy support)
+  skip: (req) => false,                             // Nunca pular (aplicar sempre)
+  handler: (req, res) => {
+    console.warn(`⚠️ [RateLimit] Muitas tentativas de ativação do IP: ${getClientIP(req)}`);
+    res.status(429).json({ 
+      success: false, 
+      error: 'too_many_requests',
+      message: 'Muitas tentativas. Aguarde 1 minuto antes de tentar novamente.' 
+    });
+  }
+});
+
+/**
+ * Limiter global para todas as requisições
+ * - Máximo 100 requisições por IP a cada 5 minutos
+ * - Proteção geral contra DOS/abuso
+ */
+const globalLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,                          // 5 minutos
+  max: 100,                                         // 100 requisições por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getClientIP(req),
+  skip: (req) => false,
+  handler: (req, res) => {
+    console.warn(`⚠️ [RateLimit] Limite global excedido do IP: ${getClientIP(req)}`);
+    res.status(429).json({ 
+      success: false, 
+      error: 'too_many_requests',
+      message: 'Limite de requisições excedido. Tente novamente mais tarde.' 
+    });
+  }
+});
+
+// Aplicar limiter global (proteção para todos os endpoints)
+app.use(globalLimiter);
 
 // ========== AUTENTICAÇÃO ==========
 
@@ -1461,7 +1510,8 @@ app.post('/api/activation-keys', authenticateDashboardToken, async (req, res) =>
 });
 
 // Reivindicar chave (App): busca uma disponível e marca como claimed (deviceId opcional: ?deviceId=xxx)
-app.get('/api/activation-keys/claim', async (req, res) => {
+// Protegido por rate limiting: 5 tentativas por IP a cada 1 minuto
+app.get('/api/activation-keys/claim', activationLimiter, async (req, res) => {
   setActivationHeaders(res);
   const origin = req.get('origin') || 'no-origin';
   console.log('[Activation] GET /api/activation-keys/claim | Origin:', origin);
@@ -1496,7 +1546,8 @@ app.get('/api/activation-keys/claim', async (req, res) => {
 });
 
 // Validar e reivindicar chave informada pelo usuário (tela de bloqueio)
-app.post('/api/activation-keys/validate-and-claim', async (req, res) => {
+// Protegido por rate limiting: 5 tentativas por IP a cada 1 minuto
+app.post('/api/activation-keys/validate-and-claim', activationLimiter, async (req, res) => {
   setActivationHeaders(res);
   if (activationKeys._disabled) {
     return res.status(503).json({
