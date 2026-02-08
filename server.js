@@ -64,7 +64,7 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'x-admin-token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'x-admin-token', 'x-dashboard-token'],
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length'],
   credentials: false,
   maxAge: 86400
@@ -93,7 +93,67 @@ app.use((req, res, next) => {
   next();
 });
 
+
+
 app.use(express.json());
+
+// ========== AUTENTICAÇÃO ==========
+
+/**
+ * Comparação segura contra timing attacks
+ */
+function constantTimeEquals(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Middleware para validar token do Dashboard (x-dashboard-token)
+ * Usado para operações sensíveis como criar chaves de ativação
+ */
+const authenticateDashboardToken = (req, res, next) => {
+  const token = req.headers['x-dashboard-token'];
+  const validToken = process.env.DASHBOARD_ACTIVATION_TOKEN;
+  
+  // Se não estiver configurado, rejeitar
+  if (!validToken) {
+    console.error('❌ ERRO: DASHBOARD_ACTIVATION_TOKEN não configurado no environment!');
+    return res.status(500).json({ 
+      success: false, 
+      error: 'server_misconfiguration',
+      message: 'Token de autenticação não configurado no servidor'
+    });
+  }
+  
+  // Se token não foi enviado, rejeitar
+  if (!token) {
+    console.warn('⚠️ [Auth] Tentativa de acesso a /activation-keys SEM x-dashboard-token');
+    return res.status(401).json({ 
+      success: false, 
+      error: 'unauthorized',
+      message: 'Token de autenticação necessário (header: x-dashboard-token)'
+    });
+  }
+  
+  // Comparação segura contra timing attacks
+  if (!constantTimeEquals(token, validToken)) {
+    console.warn('⚠️ [Auth] Token INVÁLIDO para /activation-keys');
+    return res.status(403).json({ 
+      success: false, 
+      error: 'forbidden',
+      message: 'Token de autenticação inválido'
+    });
+  }
+  
+  console.log('✅ [Auth] Dashboard autenticado para /activation-keys');
+  next();
+};
 
 // ========== SERVIÇOS ==========
 const ipGeoService = new IPGeolocationService();
@@ -1380,7 +1440,7 @@ app.get('/api/activation-keys/list', async (req, res) => {
 });
 
 // Criar chave (Dashboard): chave como id do nó
-app.post('/api/activation-keys', async (req, res) => {
+app.post('/api/activation-keys', authenticateDashboardToken, async (req, res) => {
   setActivationHeaders(res);
   try {
     const { key } = req.body || {};
