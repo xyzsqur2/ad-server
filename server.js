@@ -233,6 +233,12 @@ function logTracking(data) {
 
 // ========== ENDPOINTS ==========
 
+// Raiz: evita 404 quando alguém acessa GET /
+app.get('/', (req, res) => {
+  res.set('Content-Type', 'application/json');
+  res.status(200).json({ service: 'ad-server', ok: true, health: '/health' });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ ok: true });
