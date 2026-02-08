@@ -1574,6 +1574,70 @@ app.post('/api/activation-keys/validate-and-claim', activationLimiter, async (re
   }
 });
 
+// Validar chave já reivindicada (Estratégia 1 + 3: Server validation + DeviceId binding)
+// Protegido por rate limiting: 10 tentativas por IP a cada 1 minuto
+const validationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: 'Muitas tentativas de validação. Tente novamente em 1 minuto.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getClientIP(req),
+  skip: (req) => false,
+  handler: (req, res) => {
+    console.warn(`⚠️ [RateLimit] Muitas tentativas de validação do IP: ${getClientIP(req)}`);
+    res.status(429).json({ 
+      success: false, 
+      error: 'too_many_requests',
+      message: 'Muitas tentativas. Aguarde 1 minuto antes de tentar novamente.' 
+    });
+  }
+});
+
+app.post('/api/activation-keys/validate', validationLimiter, async (req, res) => {
+  setActivationHeaders(res);
+  
+  if (activationKeys._disabled) {
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Serviço de ativação indisponível'
+    });
+  }
+
+  try {
+    const { key, deviceId } = req.body || {};
+    
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária'
+      });
+    }
+
+    console.log('[Activation] POST /api/activation-keys/validate | key:', key, '| deviceId:', deviceId || 'não fornecido');
+
+    // Validar chave com servidor (Estratégia 1) + DeviceId binding (Estratégia 3)
+    const result = await activationKeys.validateKey(key, deviceId || null);
+
+    return res.json({
+      success: true,
+      valid: result.valid,
+      expired: result.expired,
+      boundToDevice: result.boundToDevice,
+      message: result.valid ? 'Chave válida' : 'Chave inválida'
+    });
+  } catch (error) {
+    console.error('[Activation] validate endpoint error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao validar chave'
+    });
+  }
+});
+
 // ========== ENDPOINT DE MIGRAÇÃO ==========
 
 // Endpoint para migrar dados antigos (adicionar geolocalização retroativa)

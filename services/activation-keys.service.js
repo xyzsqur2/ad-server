@@ -233,4 +233,69 @@ export class ActivationKeysService {
       return { success: false, error: 'firebase_error', message: 'Chave inválida' };
     }
   }
+
+  /**
+   * Valida uma chave já reivindicada (Estratégia 1 + 3: Server validation + DeviceId binding)
+   * Verifica se a chave existe, é 'claimed' e binds ao deviceId
+   * @param {string} key - Chave de 8 caracteres
+   * @param {string} [deviceId] - DeviceId do cliente (validar se bate)
+   * @returns {Promise<{ valid: boolean, expired: boolean, boundToDevice: boolean }>}
+   */
+  async validateKey(key, deviceId = null) {
+    if (this._disabled) {
+      return { valid: false, expired: false, boundToDevice: false };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized || !KEY_REGEX.test(normalized)) {
+      console.warn('[ActivationKeys] Chave com formato inválido:', key);
+      return { valid: false, expired: false, boundToDevice: false };
+    }
+
+    try {
+      const ref = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await ref.once('value');
+      const data = snapshot.val();
+
+      // Chave não existe
+      if (!data) {
+        console.warn('[ActivationKeys] Chave não encontrada:', normalized);
+        return { valid: false, expired: false, boundToDevice: false };
+      }
+
+      // Verificar se expirou
+      if (data.expiresAt) {
+        const expiryTime = new Date(data.expiresAt).getTime();
+        if (Date.now() > expiryTime) {
+          console.warn('[ActivationKeys] Chave expirada:', normalized);
+          return { valid: false, expired: true, boundToDevice: false };
+        }
+      }
+
+      // Verificar se foi reivindicada (só chaves 'claimed' são válidas)
+      if (data.status !== 'claimed') {
+        console.warn('[ActivationKeys] Chave não foi reivindicada:', normalized, '| status:', data.status);
+        return { valid: false, expired: false, boundToDevice: false };
+      }
+
+      // ESTRATÉGIA 3: Verificar DeviceId binding
+      // Se a chave foi claimada com deviceId, só é válida para esse device
+      // Se foi claimada sem deviceId (null), qualquer device pode usar
+      const boundToDevice = !data.deviceId || data.deviceId === deviceId;
+      
+      if (!boundToDevice) {
+        console.warn('[ActivationKeys] ❌ Tentativa de usar chave em device diferente:');
+        console.warn('  - Chave:', normalized);
+        console.warn('  - DeviceId original:', data.deviceId);
+        console.warn('  - DeviceId tentativa:', deviceId);
+        return { valid: false, expired: false, boundToDevice: false };
+      }
+
+      console.log('[ActivationKeys] ✅ Chave válida em validação:', normalized, '| deviceId match: ' + (data.deviceId === deviceId ? 'sim' : 'não vinculada'));
+      return { valid: true, expired: false, boundToDevice: true };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao validar chave:', error);
+      return { valid: false, expired: false, boundToDevice: false };
+    }
+  }
 }
