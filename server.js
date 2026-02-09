@@ -1709,6 +1709,179 @@ app.post('/api/activation-keys/revoke', async (req, res) => {
   }
 });
 
+// ========== ENDPOINTS DE BLOQUEIO DE CHAVES (DASHBOARD) ==========
+
+/**
+ * POST /api/activation-keys/lock/:key - Bloqueia uma chave (admin)
+ * Impede acesso à chave por um período especificado
+ * Body: { durationMinutes: 5 } (opcional, padrão 5)
+ */
+app.post('/api/activation-keys/lock/:key', async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido ou não fornecido'
+    });
+  }
+
+  try {
+    const { key } = req.params;
+    const { durationMinutes = 5 } = req.body || {};
+
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária na URL'
+      });
+    }
+
+    console.log(`[Lock] Bloqueando chave: ${key} | Duração: ${durationMinutes} minutos`);
+
+    const result = await activationKeys.lockKey(key, durationMinutes);
+
+    if (!result.success) {
+      const status = result.error === 'not_found' ? 404 : 400;
+      return res.status(status).json({
+        success: false,
+        error: result.error,
+        message: `Erro ao bloquear chave: ${result.error}`
+      });
+    }
+
+    return res.json({
+      success: true,
+      key: key.toUpperCase(),
+      lockedUntil: result.lockedUntil,
+      minutesLeft: result.minutesLeft,
+      message: `Chave bloqueada por ${durationMinutes} minutos`
+    });
+  } catch (error) {
+    console.error('[Lock] Erro ao bloquear chave:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao bloquear chave'
+    });
+  }
+});
+
+/**
+ * POST /api/activation-keys/unlock/:key - Desbloqueia uma chave (admin)
+ * Remove o bloqueio de uma chave
+ */
+app.post('/api/activation-keys/unlock/:key', async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido ou não fornecido'
+    });
+  }
+
+  try {
+    const { key } = req.params;
+
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária na URL'
+      });
+    }
+
+    console.log(`[Unlock] Desbloqueando chave: ${key}`);
+
+    const result = await activationKeys.unlockKey(key);
+
+    if (!result.success) {
+      const status = result.error === 'not_found' ? 404 : 400;
+      return res.status(status).json({
+        success: false,
+        error: result.error,
+        message: `Erro ao desbloquear chave: ${result.error}`
+      });
+    }
+
+    return res.json({
+      success: true,
+      key: key.toUpperCase(),
+      message: 'Chave desbloqueada com sucesso'
+    });
+  } catch (error) {
+    console.error('[Unlock] Erro ao desbloquear chave:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao desbloquear chave'
+    });
+  }
+});
+
+/**
+ * GET /api/activation-keys/lock-status/:key - Verifica status de bloqueio (admin)
+ * Retorna se a chave está bloqueada e quanto tempo falta
+ */
+app.get('/api/activation-keys/lock-status/:key', async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido ou não fornecido'
+    });
+  }
+
+  try {
+    const { key } = req.params;
+
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária na URL'
+      });
+    }
+
+    const result = await activationKeys.getKeyLockStatus(key);
+
+    if (!result.success) {
+      const status = result.error === 'not_found' ? 404 : 400;
+      return res.status(status).json({
+        success: false,
+        error: result.error,
+        message: `Erro ao verificar bloqueio: ${result.error}`
+      });
+    }
+
+    return res.json({
+      success: true,
+      key: key.toUpperCase(),
+      locked: result.locked,
+      lockedUntil: result.lockedUntil || null,
+      minutesLeft: result.minutesLeft || 0,
+      lockedAt: result.lockedAt || null,
+      lockedBy: result.lockedBy || null
+    });
+  } catch (error) {
+    console.error('[LockStatus] Erro ao verificar bloqueio:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao verificar bloqueio'
+    });
+  }
+});
+
 // ========== ENDPOINT DE LISTAGEM DE CHAVES (DASHBOARD) ==========
 
 /**

@@ -11,6 +11,7 @@ import admin from 'firebase-admin';
 const KEY_LENGTH = 8;
 const KEY_REGEX = /^[A-Za-z0-9]{8}$/;
 const FIREBASE_PATH = 'activation_keys';
+const LOCK_PERIOD_MS = 5 * 60 * 1000;  // 5 minutos de lock automático após claim
 
 export class ActivationKeysService {
   constructor() {
@@ -123,6 +124,7 @@ export class ActivationKeysService {
             ...keyData,
             status: 'claimed',
             claimedAt: new Date().toISOString(),
+            lockedUntil: new Date(Date.now() + LOCK_PERIOD_MS).toISOString(),
             deviceId: deviceId || null
           };
           return updated;
@@ -203,6 +205,7 @@ export class ActivationKeysService {
       await keyRef.update({
         status: 'claimed',
         claimedAt: new Date().toISOString(),
+        lockedUntil: new Date(Date.now() + LOCK_PERIOD_MS).toISOString(),
         deviceId: deviceId || null
       });
       
@@ -264,7 +267,27 @@ export class ActivationKeysService {
       // Verificar se foi reivindicada (só chaves 'claimed' são válidas)
       if (data.status !== 'claimed') {
         console.warn('[ActivationKeys] Chave não foi reivindicada:', normalized, '| status:', data.status);
-        return { valid: false, expired: false, boundToDevice: false, revoked: false };
+        return { valid: false, expired: false, boundToDevice: false, revoked: false, locked: false };
+      }
+
+      // BLOQUEIO: Verificar se está em período de lock (manual ou automático após claim)
+      if (data.lockedUntil) {
+        const lockUntilTime = new Date(data.lockedUntil).getTime();
+        if (Date.now() < lockUntilTime) {
+          const minutesLeft = Math.ceil((lockUntilTime - Date.now()) / 60000);
+          console.warn('[ActivationKeys] ❌ Chave ainda está bloqueada:', normalized);
+          console.warn('  - Bloqueada até:', data.lockedUntil);
+          console.warn('  - Minutos faltando:', minutesLeft);
+          return { 
+            valid: false, 
+            expired: false, 
+            boundToDevice: false, 
+            revoked: false,
+            locked: true,
+            lockedUntil: data.lockedUntil,
+            minutesLeft: minutesLeft
+          };
+        }
       }
 
       // ESTRATÉGIA 3: Verificar DeviceId binding
@@ -281,7 +304,7 @@ export class ActivationKeysService {
       }
 
       console.log('[ActivationKeys] ✅ Chave válida em validação:', normalized, '| deviceId match: ' + (data.deviceId === deviceId ? 'sim' : 'não vinculada'));
-      return { valid: true, expired: false, boundToDevice: true, revoked: false };
+      return { valid: true, expired: false, boundToDevice: true, revoked: false, locked: false };
     } catch (error) {
       console.error('[ActivationKeys] Erro ao validar chave:', error);
       return { valid: false, expired: false, boundToDevice: false, revoked: false };
@@ -354,6 +377,139 @@ export class ActivationKeysService {
     } catch (error) {
       console.error('[ActivationKeys] Erro ao listar chaves:', error);
       return { success: false, keys: [], total: 0, byStatus: {} };
+    }
+  }
+
+  /**
+   * Bloqueia uma chave manualmente (Dashboard)
+   * Configura lockedUntil para um tempo no futuro, impedindo acesso
+   * @param {string} key - Chave de 8 caracteres
+   * @param {number} [durationMinutes=5] - Quanto tempo bloquear (padrão 5 minutos)
+   * @returns {Promise<{ success: boolean, lockedUntil?: string, minutesLeft?: number, error?: string }>}
+   */
+  async lockKey(key, durationMinutes = 5) {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized || !KEY_REGEX.test(normalized)) {
+      return { success: false, error: 'invalid_key' };
+    }
+
+    try {
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await keyRef.once('value');
+      const keyData = snapshot.val();
+
+      if (!keyData) {
+        return { success: false, error: 'not_found' };
+      }
+
+      const lockUntilTime = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+
+      await keyRef.update({
+        lockedUntil: lockUntilTime,
+        lockedAt: new Date().toISOString(),
+        lockedBy: 'dashboard'
+      });
+
+      console.log(`[ActivationKeys] ✅ Chave bloqueada: ${normalized} | Até: ${lockUntilTime}`);
+      return { 
+        success: true, 
+        lockedUntil: lockUntilTime,
+        minutesLeft: durationMinutes
+      };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao bloquear chave:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Desbloqueia uma chave manualmente (Dashboard)
+   * Remove o bloqueio definindo lockedUntil para null
+   * @param {string} key - Chave de 8 caracteres
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  async unlockKey(key) {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized || !KEY_REGEX.test(normalized)) {
+      return { success: false, error: 'invalid_key' };
+    }
+
+    try {
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await keyRef.once('value');
+      const keyData = snapshot.val();
+
+      if (!keyData) {
+        return { success: false, error: 'not_found' };
+      }
+
+      await keyRef.update({
+        lockedUntil: null
+      });
+
+      console.log(`[ActivationKeys] ✅ Chave desbloqueada: ${normalized}`);
+      return { success: true };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao desbloquear chave:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Verifica status de bloqueio de uma chave
+   * @param {string} key - Chave de 8 caracteres
+   * @returns {Promise<{ success: boolean, locked: boolean, lockedUntil?: string, minutesLeft?: number, error?: string }>}
+   */
+  async getKeyLockStatus(key) {
+    if (this._disabled) {
+      return { success: false, locked: false, error: 'firebase_unavailable' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized || !KEY_REGEX.test(normalized)) {
+      return { success: false, locked: false, error: 'invalid_key' };
+    }
+
+    try {
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await keyRef.once('value');
+      const data = snapshot.val();
+
+      if (!data) {
+        return { success: false, locked: false, error: 'not_found' };
+      }
+
+      if (!data.lockedUntil) {
+        return { success: true, locked: false, minutesLeft: 0 };
+      }
+
+      const lockUntilTime = new Date(data.lockedUntil).getTime();
+      const now = Date.now();
+
+      if (now < lockUntilTime) {
+        const minutesLeft = Math.ceil((lockUntilTime - now) / 60000);
+        return {
+          success: true,
+          locked: true,
+          lockedUntil: data.lockedUntil,
+          minutesLeft,
+          lockedAt: data.lockedAt || null,
+          lockedBy: data.lockedBy || 'unknown'
+        };
+      }
+
+      return { success: true, locked: false, minutesLeft: 0 };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao verificar lock status:', error);
+      return { success: false, locked: false, error: error.message };
     }
   }
 
