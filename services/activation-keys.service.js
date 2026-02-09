@@ -328,6 +328,7 @@ export class ActivationKeysService {
           expiresAt: keyData.expiresAt,
           claimedAt: keyData.claimedAt,
           claimedBy: keyData.deviceId || null,
+          deviceId: keyData.deviceId || null, // Duplicado para compatibilidade
           daysLeft: keyData.expiresAt 
             ? Math.ceil((new Date(keyData.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
             : null,
