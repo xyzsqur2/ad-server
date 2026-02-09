@@ -1709,6 +1709,132 @@ app.post('/api/activation-keys/revoke', async (req, res) => {
   }
 });
 
+// ========== ENDPOINT DE LISTAGEM DE CHAVES (DASHBOARD) ==========
+
+/**
+ * GET /api/activation-keys/list - Lista chaves com filtros (admin)
+ * Query params: status (all|available|claimed|revoked), includeExpired (true|false)
+ */
+app.get('/api/activation-keys/list', validationLimiter, async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido'
+    });
+  }
+
+  if (activationKeys._disabled) {
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Serviço de ativação indisponível'
+    });
+  }
+
+  try {
+    const status = (req.query.status || 'all').toLowerCase();
+    const includeExpired = req.query.includeExpired === 'true';
+
+    console.log(`[List] Listando chaves com status: ${status}`);
+
+    const result = await activationKeys.listKeysFiltered(status, includeExpired);
+
+    return res.json({
+      success: result.success,
+      keys: result.keys || [],
+      total: result.total || 0,
+      byStatus: result.byStatus || {},
+      message: `${result.total || 0} chaves encontradas`
+    });
+  } catch (error) {
+    console.error('[List] Erro ao listar chaves:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao listar chaves'
+    });
+  }
+});
+
+// ========== ENDPOINT DE EXPORTAÇÃO DE CHAVES (DASHBOARD) ==========
+
+/**
+ * GET /api/activation-keys/export - Exporta chaves em CSV (admin)
+ * Query params: status (available|claimed|revoked), format (csv|json)
+ */
+app.get('/api/activation-keys/export', async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido'
+    });
+  }
+
+  if (activationKeys._disabled) {
+    return res.status(503).json({
+      success: false,
+      error: 'service_unavailable',
+      message: 'Serviço de ativação indisponível'
+    });
+  }
+
+  try {
+    const status = (req.query.status || 'available').toLowerCase();
+    const format = (req.query.format || 'csv').toLowerCase();
+
+    console.log(`[Export] Exportando chaves com status: ${status} (formato: ${format})`);
+
+    const result = await activationKeys.exportKeysCSV(status);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'export_failed',
+        message: 'Erro ao exportar chaves'
+      });
+    }
+
+    if (format === 'json') {
+      // Converter CSV para JSON
+      const lines = result.csv.split('\n');
+      const headers = lines[0].split(',').map(h => h.replace(/"/g, ''));
+      const data = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.replace(/"/g, ''));
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = values[i]);
+        return obj;
+      });
+
+      return res.json({
+        success: true,
+        format: 'json',
+        count: result.count,
+        data
+      });
+    } else {
+      // Retornar como CSV (download)
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="chaves-${status}-${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(result.csv);
+    }
+  } catch (error) {
+    console.error('[Export] Erro ao exportar chaves:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao exportar chaves'
+    });
+  }
+});
+
 // ========== ENDPOINT DE MIGRAÇÃO ==========
 
 // Endpoint para migrar dados antigos (adicionar geolocalização retroativa)

@@ -287,4 +287,126 @@ export class ActivationKeysService {
       return { valid: false, expired: false, boundToDevice: false, revoked: false };
     }
   }
+
+  /**
+   * Lista chaves com filtros e paginação (Dashboard)
+   * @param {string} [status='all'] - 'available', 'claimed', 'revoked', 'all'
+   * @param {boolean} [includeExpired=false] - Incluir expiradas?
+   * @returns {Promise<{ success: boolean, keys?: Array, total?: number, byStatus?: object }>}
+   */
+  async listKeysFiltered(status = 'all', includeExpired = false) {
+    if (this._disabled) {
+      return { success: false, keys: [], total: 0, byStatus: {} };
+    }
+
+    try {
+      const ref = this.database.ref(FIREBASE_PATH);
+      const snapshot = await ref.once('value');
+      const allKeys = snapshot.val() || {};
+
+      const filtered = Object.entries(allKeys)
+        .filter(([, keyData]) => {
+          // Filtrar por status
+          if (status !== 'all' && keyData.status !== status) {
+            return false;
+          }
+
+          // Filtrar expiradas
+          if (!includeExpired && keyData.expiresAt) {
+            const expiryTime = new Date(keyData.expiresAt).getTime();
+            if (Date.now() > expiryTime) {
+              return false;
+            }
+          }
+
+          return true;
+        })
+        .map(([keyId, keyData]) => ({
+          key: keyId,
+          status: keyData.status,
+          createdAt: keyData.createdAt,
+          expiresAt: keyData.expiresAt,
+          claimedAt: keyData.claimedAt,
+          claimedBy: keyData.deviceId || null,
+          daysLeft: keyData.expiresAt 
+            ? Math.ceil((new Date(keyData.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+            : null,
+          revokedAt: keyData.revokedAt,
+          revokeReason: keyData.revokeReason
+        }))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      const byStatus = {
+        available: Object.values(allKeys).filter(k => k.status === 'available').length,
+        claimed: Object.values(allKeys).filter(k => k.status === 'claimed').length,
+        revoked: Object.values(allKeys).filter(k => k.status === 'revoked').length,
+        expired: Object.values(allKeys).filter(k => k.status === 'expired').length
+      };
+
+      console.log(`[ActivationKeys] Listadas ${filtered.length} chaves (status: ${status})`);
+      return {
+        success: true,
+        keys: filtered,
+        total: filtered.length,
+        byStatus
+      };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao listar chaves:', error);
+      return { success: false, keys: [], total: 0, byStatus: {} };
+    }
+  }
+
+  /**
+   * Exporta chaves para CSV (Dashboard)
+   * @param {string} [status='available'] - Status das chaves a exportar
+   * @returns {Promise<{ success: boolean, csv?: string, count?: number }>}
+   */
+  async exportKeysCSV(status = 'available') {
+    if (this._disabled) {
+      return { success: false, csv: '', count: 0 };
+    }
+
+    try {
+      const ref = this.database.ref(FIREBASE_PATH);
+      const snapshot = await ref.once('value');
+      const allKeys = snapshot.val() || {};
+
+      const keysToExport = Object.entries(allKeys)
+        .filter(([, keyData]) => keyData.status === status)
+        .map(([keyId, keyData]) => ({
+          key: keyId,
+          status: keyData.status,
+          createdAt: keyData.createdAt,
+          claimedAt: keyData.claimedAt,
+          deviceId: keyData.deviceId,
+          expiresAt: keyData.expiresAt
+        }));
+
+      // Gerar CSV
+      const headers = ['Chave', 'Status', 'Criada em', 'Ativada em', 'Device', 'Expira em'];
+      const rows = keysToExport.map(k => [
+        k.key,
+        k.status,
+        new Date(k.createdAt).toLocaleString('pt-BR'),
+        k.claimedAt ? new Date(k.claimedAt).toLocaleString('pt-BR') : 'N/A',
+        k.deviceId || 'N/A',
+        k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR') : 'N/A'
+      ]);
+
+      const csv = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+
+      console.log(`[ActivationKeys] Exportadas ${keysToExport.length} chaves para CSV`);
+      return {
+        success: true,
+        csv,
+        count: keysToExport.length
+      };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao exportar chaves:', error);
+      return { success: false, csv: '', count: 0 };
+    }
+  }
 }
