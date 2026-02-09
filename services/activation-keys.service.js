@@ -220,17 +220,17 @@ export class ActivationKeysService {
    * Verifica se a chave existe, é 'claimed' e binds ao deviceId
    * @param {string} key - Chave de 8 caracteres
    * @param {string} [deviceId] - DeviceId do cliente (validar se bate)
-   * @returns {Promise<{ valid: boolean, expired: boolean, boundToDevice: boolean }>}
+   * @returns {Promise<{ valid: boolean, expired: boolean, boundToDevice: boolean, revoked: boolean, revokeReason?: string }>}
    */
   async validateKey(key, deviceId = null) {
     if (this._disabled) {
-      return { valid: false, expired: false, boundToDevice: false };
+      return { valid: false, expired: false, boundToDevice: false, revoked: false };
     }
 
     const normalized = this._normalizeKey(key);
     if (!normalized || !KEY_REGEX.test(normalized)) {
       console.warn('[ActivationKeys] Chave com formato inválido:', key);
-      return { valid: false, expired: false, boundToDevice: false };
+      return { valid: false, expired: false, boundToDevice: false, revoked: false };
     }
 
     try {
@@ -241,7 +241,15 @@ export class ActivationKeysService {
       // Chave não existe
       if (!data) {
         console.warn('[ActivationKeys] Chave não encontrada:', normalized);
-        return { valid: false, expired: false, boundToDevice: false };
+        return { valid: false, expired: false, boundToDevice: false, revoked: false };
+      }
+
+      // BLOQUEIO: Verificar se chave foi revogada
+      if (data.status === 'revoked') {
+        console.error('[ActivationKeys] ❌ BLOQUEADO: Chave foi revogada pelo admin:', normalized);
+        console.error('  - Motivo:', data.revokeReason || 'não especificado');
+        console.error('  - Revogada em:', data.revokedAt || 'desconhecido');
+        return { valid: false, expired: false, boundToDevice: false, revoked: true, revokeReason: data.revokeReason };
       }
 
       // Verificar se expirou
@@ -249,14 +257,14 @@ export class ActivationKeysService {
         const expiryTime = new Date(data.expiresAt).getTime();
         if (Date.now() > expiryTime) {
           console.warn('[ActivationKeys] Chave expirada:', normalized);
-          return { valid: false, expired: true, boundToDevice: false };
+          return { valid: false, expired: true, boundToDevice: false, revoked: false };
         }
       }
 
       // Verificar se foi reivindicada (só chaves 'claimed' são válidas)
       if (data.status !== 'claimed') {
         console.warn('[ActivationKeys] Chave não foi reivindicada:', normalized, '| status:', data.status);
-        return { valid: false, expired: false, boundToDevice: false };
+        return { valid: false, expired: false, boundToDevice: false, revoked: false };
       }
 
       // ESTRATÉGIA 3: Verificar DeviceId binding
@@ -269,14 +277,14 @@ export class ActivationKeysService {
         console.warn('  - Chave:', normalized);
         console.warn('  - DeviceId original:', data.deviceId);
         console.warn('  - DeviceId tentativa:', deviceId);
-        return { valid: false, expired: false, boundToDevice: false };
+        return { valid: false, expired: false, boundToDevice: false, revoked: false };
       }
 
       console.log('[ActivationKeys] ✅ Chave válida em validação:', normalized, '| deviceId match: ' + (data.deviceId === deviceId ? 'sim' : 'não vinculada'));
-      return { valid: true, expired: false, boundToDevice: true };
+      return { valid: true, expired: false, boundToDevice: true, revoked: false };
     } catch (error) {
       console.error('[ActivationKeys] Erro ao validar chave:', error);
-      return { valid: false, expired: false, boundToDevice: false };
+      return { valid: false, expired: false, boundToDevice: false, revoked: false };
     }
   }
 }

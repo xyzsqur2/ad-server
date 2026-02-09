@@ -1621,11 +1621,24 @@ app.post('/api/activation-keys/validate', validationLimiter, async (req, res) =>
     // Validar chave com servidor (Estratégia 1) + DeviceId binding (Estratégia 3)
     const result = await activationKeys.validateKey(key, deviceId || null);
 
+    // BLOQUEIO: Se chave foi revogada, retornar 403 e detalhe
+    if (result.revoked) {
+      console.error('[Activation] ❌ BLOQUEADO: Chave foi revogada');
+      return res.status(403).json({
+        success: false,
+        valid: false,
+        revoked: true,
+        revokeReason: result.revokeReason || 'Chave foi revogada pelo administrador',
+        message: `Chave revogada: ${result.revokeReason || 'motivo não especificado'}`
+      });
+    }
+
     return res.json({
       success: true,
       valid: result.valid,
       expired: result.expired,
       boundToDevice: result.boundToDevice,
+      revoked: false,
       message: result.valid ? 'Chave válida' : 'Chave inválida'
     });
   } catch (error) {
@@ -1634,6 +1647,64 @@ app.post('/api/activation-keys/validate', validationLimiter, async (req, res) =>
       success: false,
       error: 'server_error',
       message: 'Erro ao validar chave'
+    });
+  }
+});
+
+// ========== ENDPOINT DE REVOGAÇÃO DE CHAVES ==========
+
+/**
+ * POST /api/activation-keys/revoke - Revoga uma chave (admin)
+ * Marca a chave como 'revoked' no Firebase, bloqueando acesso imediatamente
+ * Quando app tentar validar com POST /validate, será rejeitado
+ */
+app.post('/api/activation-keys/revoke', async (req, res) => {
+  // ⚠️ IMPORTANTE: Adicione autenticação em produção!
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido ou não fornecido'
+    });
+  }
+
+  try {
+    const { key, reason = 'admin_revoke' } = req.body || {};
+    
+    if (!key || typeof key !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária (campo: key)'
+      });
+    }
+
+    console.log(`[Revoke] Revogando chave: ${key} | Motivo: ${reason}`);
+    const result = await activationKeys.revokeKey(key, reason);
+
+    if (result.success) {
+      console.log(`[Revoke] ✅ Chave revogada com sucesso: ${key}`);
+      return res.json({
+        success: true,
+        message: result.message,
+        revokedAt: new Date().toISOString()
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'revoke_failed',
+        message: result.message
+      });
+    }
+  } catch (error) {
+    console.error('[Revoke] Erro ao revogar chave:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao revogar chave'
     });
   }
 });
