@@ -355,6 +355,11 @@ export class ActivationKeysService {
           daysLeft: keyData.expiresAt 
             ? Math.ceil((new Date(keyData.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
             : null,
+          lockedUntil: keyData.lockedUntil || null,
+          locked: keyData.lockedUntil && new Date(keyData.lockedUntil).getTime() > Date.now(),
+          minutesLeft: keyData.lockedUntil && new Date(keyData.lockedUntil).getTime() > Date.now() 
+            ? Math.ceil((new Date(keyData.lockedUntil).getTime() - Date.now()) / 60000)
+            : 0,
           revokedAt: keyData.revokedAt,
           revokeReason: keyData.revokeReason
         }))
