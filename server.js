@@ -1544,7 +1544,8 @@ app.post('/api/activation-keys/validate-and-claim', activationLimiter, async (re
   try {
     const { key, deviceId } = req.body || {};
     console.log('[Activation] validate-and-claim | chave inserida pelo usuário:', key, '| (tipo:', typeof key, ')');
-    const result = await activationKeys.claimKeyByValue(key, deviceId || null);
+    // skipLock=true: chave inserida manualmente → desbloqueio imediato sem período de lock
+    const result = await activationKeys.claimKeyByValue(key, deviceId || null, true);
     if (result.success) {
       return res.json({ success: true, key: result.key });
     }

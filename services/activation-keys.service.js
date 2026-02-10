@@ -167,9 +167,10 @@ export class ActivationKeysService {
    * A chave deve existir no Firebase e estar com status 'available'.
    * @param {string} key - Chave de 8 caracteres (será normalizada)
    * @param {string} [deviceId] - Id do dispositivo (opcional)
+   * @param {boolean} [skipLock] - Se true, não aplica lock (chave inserida manualmente = uso imediato)
    * @returns {Promise<{ success: boolean, key?: string, error?: string, message?: string }>}
    */
-  async claimKeyByValue(key, deviceId = null) {
+  async claimKeyByValue(key, deviceId = null, skipLock = false) {
     if (this._disabled) {
       return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
     }
@@ -201,13 +202,17 @@ export class ActivationKeysService {
       }
       
       // Segundo: Atualizar + Claim (o mais próximo de atomic possível no Realtime DB)
-      console.log('[ActivationKeys] Claimando chave:', normalized);
-      await keyRef.update({
+      // skipLock=true: chave inserida manualmente pelo usuário → sem lock para desbloqueio imediato
+      const updateData = {
         status: 'claimed',
         claimedAt: new Date().toISOString(),
-        lockedUntil: new Date(Date.now() + LOCK_PERIOD_MS).toISOString(),
         deviceId: deviceId || null
-      });
+      };
+      if (!skipLock) {
+        updateData.lockedUntil = new Date(Date.now() + LOCK_PERIOD_MS).toISOString();
+      }
+      console.log('[ActivationKeys] Claimando chave:', normalized, skipLock ? '(manual, sem lock)' : '');
+      await keyRef.update(updateData);
       
       console.log('[ActivationKeys] ✅ Chave claimada com sucesso:', normalized, deviceId ? '| deviceId=' + deviceId : '');
       return { success: true, key: normalized };
