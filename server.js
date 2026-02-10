@@ -1470,23 +1470,8 @@ app.get('/api/activation-keys/status', (req, res) => {
   });
 });
 
-// Listar todas as chaves do Firebase (Dashboard - campos: status, createdAt, claimedAt, deviceId)
-app.get('/api/activation-keys/list', async (req, res) => {
-  setActivationHeaders(res);
-  if (activationKeys._disabled) {
-    return res.status(503).json({ success: false, error: 'service_unavailable', keys: null });
-  }
-  try {
-    const result = await activationKeys.listKeys();
-    if (!result.success) {
-      return res.status(500).json({ success: false, error: result.error || 'firebase_error', keys: null });
-    }
-    return res.json({ success: true, keys: result.keys || {} });
-  } catch (error) {
-    console.error('[activation-keys] list:', error);
-    return res.status(500).json({ success: false, error: error.message, keys: null });
-  }
-});
+// ⚠️ ENDPOINT ANTIGO REMOVIDO - Usar GET /api/activation-keys/list com x-admin-token (linha ~1891)
+// que retorna array formatado via listKeysFiltered()
 
 // Criar chave (Dashboard): chave como id do nó
 app.post('/api/activation-keys', authenticateDashboardToken, async (req, res) => {
@@ -1711,6 +1696,8 @@ app.post('/api/activation-keys/revoke', async (req, res) => {
 
 // ========== ENDPOINTS DE BLOQUEIO DE CHAVES (DASHBOARD) ==========
 
+// ========== BLOQUEIO DE CHAVES (Admin) ==========
+
 /**
  * POST /api/activation-keys/lock/:key - Bloqueia uma chave (admin)
  * Impede acesso à chave por um período especificado
@@ -1718,9 +1705,28 @@ app.post('/api/activation-keys/revoke', async (req, res) => {
  */
 app.post('/api/activation-keys/lock/:key', async (req, res) => {
   const adminToken = req.headers['x-admin-token'];
-  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  const adminTokenEnv = process.env.ADMIN_TOKEN;
+  const expectedToken = adminTokenEnv || 'admin-token-2026';
+  
+  // 🔍 Debug completo
+  console.log(`[Lock] ADMIN_TOKEN Process Environment:`, {
+    'process.env.ADMIN_TOKEN': adminTokenEnv,
+    'process.env.ADMIN_TOKEN is set': !!adminTokenEnv,
+    'fallback applied': !adminTokenEnv
+  });
+  
+  console.log(`[Lock] Token validation:`, {
+    received: adminToken,
+    expected: expectedToken,
+    match: adminToken === expectedToken,
+    receivedLength: adminToken ? adminToken.length : 0,
+    expectedLength: expectedToken.length,
+    received_bytes: adminToken ? Buffer.from(adminToken).toString('hex') : 'undefined',
+    expected_bytes: Buffer.from(expectedToken).toString('hex')
+  });
   
   if (adminToken !== expectedToken) {
+    console.warn(`[Lock] Unauthorized: token mismatch`);
     return res.status(401).json({
       success: false,
       error: 'unauthorized',
@@ -1778,7 +1784,14 @@ app.post('/api/activation-keys/unlock/:key', async (req, res) => {
   const adminToken = req.headers['x-admin-token'];
   const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
   
+  console.log(`[Unlock] Token validation:`, {
+    received: adminToken,
+    expected: expectedToken,
+    match: adminToken === expectedToken
+  });
+  
   if (adminToken !== expectedToken) {
+    console.warn(`[Unlock] Unauthorized: token mismatch`);
     return res.status(401).json({
       success: false,
       error: 'unauthorized',
@@ -1833,7 +1846,14 @@ app.get('/api/activation-keys/lock-status/:key', async (req, res) => {
   const adminToken = req.headers['x-admin-token'];
   const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
   
+  console.log(`[LockStatus] Token validation:`, {
+    received: adminToken,
+    expected: expectedToken,
+    match: adminToken === expectedToken
+  });
+  
   if (adminToken !== expectedToken) {
+    console.warn(`[LockStatus] Unauthorized: token mismatch`);
     return res.status(401).json({
       success: false,
       error: 'unauthorized',
@@ -2117,6 +2137,16 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor de anúncios rodando na porta ${PORT}`);
   console.log(`📡 Health: http://localhost:${PORT}/health`);
   console.log(`📢 Próximo anúncio: http://localhost:${PORT}/ad/next`);
+  
+  // 🔐 Show token configuration
+  const tokenEnv = process.env.ADMIN_TOKEN;
+  const tokenUsed = tokenEnv || 'admin-token-2026';
+  console.log(`🔐 ADMIN_TOKEN Configuration:`, {
+    'env variable set': !!tokenEnv,
+    'value used': tokenUsed,
+    'from environment': !!tokenEnv,
+    'using fallback': !tokenEnv
+  });
   
   if (process.env.ALLOWED_ORIGINS) {
     console.log(`🔒 CORS restrito para: ${allowedOrigins.join(', ')}`);
