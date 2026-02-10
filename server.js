@@ -1905,14 +1905,57 @@ app.get('/api/activation-keys/lock-status/:key', async (req, res) => {
 // ========== ENDPOINT DE LISTAGEM DE CHAVES (DASHBOARD) ==========
 
 /**
+ * DEBUG: GET /api/activation-keys/debug - Mostra config do token (sem autenticação)
+ * Útil para verificar qual token o servidor espera
+ */
+app.get('/api/activation-keys/debug', async (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  const adminTokenEnv = process.env.ADMIN_TOKEN;
+  const expectedToken = adminTokenEnv || 'admin-token-2026';
+  
+  console.log(`[Debug] Token info requested`);
+  
+  res.json({
+    success: true,
+    debug: {
+      'ADMIN_TOKEN environment': adminTokenEnv || 'não setado',
+      'fallback used': !adminTokenEnv,
+      'expected token': expectedToken,
+      'token received in header': adminToken || 'não recebido',
+      'tokens match': adminToken === expectedToken,
+      'node env': process.env.NODE_ENV || 'development'
+    }
+  });
+});
+
+/**
  * GET /api/activation-keys/list - Lista chaves com filtros (admin)
  * Query params: status (all|available|claimed|revoked), includeExpired (true|false)
  */
 app.get('/api/activation-keys/list', validationLimiter, async (req, res) => {
   const adminToken = req.headers['x-admin-token'];
-  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  const adminTokenEnv = process.env.ADMIN_TOKEN;
+  const expectedToken = adminTokenEnv || 'admin-token-2026';
+  
+  // 🔍 Debug completo
+  console.log(`[List] ADMIN_TOKEN Process Environment:`, {
+    'process.env.ADMIN_TOKEN': adminTokenEnv,
+    'process.env.ADMIN_TOKEN is set': !!adminTokenEnv,
+    'fallback applied': !adminTokenEnv
+  });
+  
+  console.log(`[List] Token validation:`, {
+    received: adminToken,
+    expected: expectedToken,
+    match: adminToken === expectedToken,
+    receivedLength: adminToken ? adminToken.length : 0,
+    expectedLength: expectedToken.length,
+    received_bytes: adminToken ? Buffer.from(adminToken).toString('hex') : 'undefined',
+    expected_bytes: Buffer.from(expectedToken).toString('hex')
+  });
   
   if (adminToken !== expectedToken) {
+    console.warn(`[List] Unauthorized: token mismatch`);
     return res.status(401).json({
       success: false,
       error: 'unauthorized',
