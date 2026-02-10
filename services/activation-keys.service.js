@@ -519,6 +519,50 @@ export class ActivationKeysService {
   }
 
   /**
+   * Revoga uma chave (invalida permanentemente)
+   * @param {string} key - Chave de 8 caracteres
+   * @param {string} [reason='admin_revoke'] - Motivo da revogação
+   * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+   */
+  async revokeKey(key, reason = 'admin_revoke') {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized) {
+      return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+    }
+
+    try {
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await keyRef.once('value');
+      const data = snapshot.val();
+
+      if (!data) {
+        return { success: false, error: 'not_found', message: 'Chave não encontrada' };
+      }
+
+      // Atualizar status para revoked e adicionar timestamp
+      await keyRef.update({
+        status: 'revoked',
+        revokedAt: new Date().toISOString(),
+        revokeReason: reason,
+        lockedUntil: null  // Remove bloqueio
+      });
+
+      console.log(`[ActivationKeys] Chave revogada: ${normalized} | Motivo: ${reason}`);
+      return {
+        success: true,
+        message: `Chave ${normalized} revogada com sucesso`
+      };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao revogar chave:', error);
+      return { success: false, error: 'server_error', message: error.message };
+    }
+  }
+
+  /**
    * Exporta chaves para CSV (Dashboard)
    * @param {string} [status='available'] - Status das chaves a exportar
    * @returns {Promise<{ success: boolean, csv?: string, count?: number }>}
