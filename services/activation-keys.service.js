@@ -563,6 +563,53 @@ export class ActivationKeysService {
   }
 
   /**
+   * Redefine uma chave reclamada/usada de volta para 'available' (permite reutilização)
+   * Remove deviceId, claimedAt, lockedUntil e retorna ao status 'available'
+   * @param {string} key - Chave de 8 caracteres
+   * @returns {Promise<{ success: boolean, message?: string, error?: string }>}
+   */
+  async resetKey(key) {
+    if (this._disabled) {
+      return { success: false, error: 'firebase_unavailable', message: 'Firebase não disponível' };
+    }
+
+    const normalized = this._normalizeKey(key);
+    if (!normalized) {
+      return { success: false, error: 'invalid_key', message: 'Chave inválida' };
+    }
+
+    try {
+      const keyRef = this.database.ref(`${FIREBASE_PATH}/${normalized}`);
+      const snapshot = await keyRef.once('value');
+      const data = snapshot.val();
+
+      if (!data) {
+        return { success: false, error: 'not_found', message: 'Chave não encontrada' };
+      }
+
+      // Resetar a chave para disponível, limpando dados de reivindicação
+      await keyRef.update({
+        status: 'available',
+        claimedAt: null,
+        deviceId: null,
+        lockedUntil: null,
+        resettedAt: new Date().toISOString(),
+        previousStatus: data.status,
+        previousDeviceId: data.deviceId || null
+      });
+
+      console.log(`[ActivationKeys] ✅ Chave redefinida para disponível: ${normalized} | Status anterior: ${data.status} | Device anterior: ${data.deviceId || 'nenhum'}`);
+      return {
+        success: true,
+        message: `Chave ${normalized} redefinida para disponível`
+      };
+    } catch (error) {
+      console.error('[ActivationKeys] Erro ao redefinir chave:', error);
+      return { success: false, error: 'server_error', message: error.message };
+    }
+  }
+
+  /**
    * Exporta chaves para CSV (Dashboard)
    * @param {string} [status='available'] - Status das chaves a exportar
    * @returns {Promise<{ success: boolean, csv?: string, count?: number }>}

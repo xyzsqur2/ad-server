@@ -1694,6 +1694,62 @@ app.post('/api/activation-keys/revoke', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/activation-keys/reset/:key - Redefinir uma chave para 'available' (admin)
+ * Reseta uma chave reclamada/usada, permitindo que seja usada novamente
+ * Remove deviceId, claimedAt, lockedUntil e retorna status para 'available'
+ */
+app.post('/api/activation-keys/reset/:key', async (req, res) => {
+  // ⚠️ IMPORTANTE: Adicione autenticação em produção!
+  const adminToken = req.headers['x-admin-token'];
+  const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+  
+  if (adminToken !== expectedToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Token de admin inválido ou não fornecido'
+    });
+  }
+
+  try {
+    const { key } = req.params;
+    
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_request',
+        message: 'Chave é necessária na URL'
+      });
+    }
+
+    console.log(`[Reset] Redefinindo chave: ${key}`);
+    const result = await activationKeys.resetKey(key);
+
+    if (result.success) {
+      console.log(`[Reset] ✅ Chave redefinida com sucesso: ${key}`);
+      return res.json({
+        success: true,
+        message: result.message,
+        resetedAt: new Date().toISOString()
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'reset_failed',
+        message: result.message
+      });
+    }
+  } catch (error) {
+    console.error('[Reset] Erro ao redefinir chave:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao redefinir chave'
+    });
+  }
+});
+
 // ========== ENDPOINTS DE BLOQUEIO DE CHAVES (DASHBOARD) ==========
 
 // ========== BLOQUEIO DE CHAVES (Admin) ==========
