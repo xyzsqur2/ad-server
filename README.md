@@ -92,6 +92,56 @@ Registra eventos de tracking.
 
 Os logs são salvos em `logs/tracking.log`.
 
+### `POST /api/device-security/validate`
+Valida a segurança do dispositivo (emulador/root detection).
+
+**Body:**
+```json
+{
+  "isEmulator": false,
+  "isRooted": false,
+  "deviceId": "unique-device-id",
+  "model": "SM-G973F",
+  "brand": "Samsung",
+  "osVersion": "13",
+  "appVersion": "1.0.0"
+}
+```
+
+**Resposta (Dispositivo Válido - 200):**
+```json
+{
+  "success": true,
+  "allowed": true,
+  "reason": "valid_device",
+  "message": "Dispositivo válido"
+}
+```
+
+**Resposta (Emulador Bloqueado - 403):**
+```json
+{
+  "success": true,
+  "allowed": false,
+  "reason": "emulator_detected",
+  "message": "Emuladores não são permitidos. Use um dispositivo real para continuar."
+}
+```
+
+**Resposta (Root Detectado - 403):**
+```json
+{
+  "success": true,
+  "allowed": false,
+  "reason": "rooted_device",
+  "message": "Dispositivos com root/jailbreak não são permitidos por razões de segurança."
+}
+```
+
+**Rate Limit:** 10 tentativas por minuto por IP
+
+Para mais detalhes sobre o fluxo de segurança, consulte [SECURITY-FLOW.md](./SECURITY-FLOW.md).
+
 ## ⚙️ Configuração
 
 ### Variáveis de Ambiente
