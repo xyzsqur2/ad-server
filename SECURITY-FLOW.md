@@ -323,7 +323,9 @@ Nenhuma configuração adicional é necessária. O serviço usa a mesma instânc
 
 Para endpoints administrativos, use:
 - Header: `x-admin-token` ou `x-dashboard-token`
-- Valor: Configurado em `ADMIN_TOKEN` no `.env` ou `admin-token-2026` como padrão
+- Valor: Configure `ADMIN_TOKEN` no arquivo `.env` com um token seguro
+
+**IMPORTANTE**: Nunca use tokens padrão em produção. Sempre configure uma senha forte e única no arquivo `.env`.
 
 ## 🧪 Testes
 
@@ -385,7 +387,7 @@ curl https://ad-server.com/api/device-security/stats
 
 ```bash
 curl -X POST https://ad-server.com/api/device-security/block/test-device-123 \
-  -H "x-admin-token: admin-token-2026" \
+  -H "x-admin-token: YOUR_ADMIN_TOKEN_HERE" \
   -H "Content-Type: application/json" \
   -d '{"reason": "Atividade suspeita"}'
 ```

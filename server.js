@@ -1494,19 +1494,7 @@ app.post('/api/device-security/validate', deviceSecurityLimiter, async (req, res
       });
     }
 
-    // Verificar se dispositivo está na blocklist manual
-    const isBlocked = await deviceSecurity.isDeviceBlocked(deviceInfo.deviceId);
-    if (isBlocked) {
-      console.warn(`[DeviceSecurity] ⛔ Dispositivo bloqueado manualmente: ${deviceInfo.deviceId}`);
-      return res.status(403).json({
-        success: true,
-        allowed: false,
-        reason: 'device_blocked',
-        message: 'Este dispositivo foi bloqueado. Entre em contato com o suporte.'
-      });
-    }
-
-    // Validar dispositivo
+    // Validar dispositivo (inclui verificação de blocklist)
     const result = await deviceSecurity.validateDevice(deviceInfo);
 
     // Retornar resultado

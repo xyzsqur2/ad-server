@@ -40,8 +40,39 @@ export class DeviceSecurityService {
    * @returns {Object} Resultado da validação
    */
   async validateDevice(deviceInfo) {
+    // Validar campos obrigatórios
+    const { isEmulator, isRooted, deviceId } = deviceInfo;
+    
+    if (typeof isEmulator !== 'boolean') {
+      return {
+        allowed: false,
+        reason: 'invalid_data',
+        message: 'Campo isEmulator é obrigatório e deve ser boolean'
+      };
+    }
+    
+    if (typeof isRooted !== 'boolean') {
+      return {
+        allowed: false,
+        reason: 'invalid_data',
+        message: 'Campo isRooted é obrigatório e deve ser boolean'
+      };
+    }
+
+    // Verificar blocklist manual (mesmo em modo degradado)
+    const isBlocked = await this.isDeviceBlocked(deviceId);
+    if (isBlocked) {
+      console.warn(`[DeviceSecurity] ⛔ Dispositivo bloqueado manualmente: ${deviceId}`);
+      return {
+        allowed: false,
+        reason: 'device_blocked',
+        message: 'Este dispositivo foi bloqueado. Entre em contato com o suporte.'
+      };
+    }
+
     if (this._disabled) {
       // Se Firebase não disponível, permitir (modo degradado)
+      // Mas ainda bloqueia dispositivos na blocklist manual
       console.warn('[DeviceSecurity] Firebase desabilitado - permitindo dispositivo em modo degradado');
       return {
         allowed: true,
@@ -51,7 +82,6 @@ export class DeviceSecurityService {
     }
 
     try {
-      const { isEmulator, isRooted, deviceId } = deviceInfo;
 
       // Política de segurança: BLOQUEAR emuladores e dispositivos rooted
       if (isEmulator) {
@@ -198,6 +228,8 @@ export class DeviceSecurityService {
    */
   async isDeviceBlocked(deviceId) {
     if (this._disabled) {
+      // Em modo degradado, não podemos acessar Firebase
+      // Retornar false (não bloqueado) pois não temos como verificar
       return false;
     }
 
