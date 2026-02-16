@@ -458,9 +458,6 @@ app.get('/proxy-video', async (req, res) => {
       });
     }
 
-    // URL de download do Google Drive
-    const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-    
     // Headers para simular navegador
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -471,157 +468,259 @@ app.get('/proxy-video', async (req, res) => {
     // Suporte a HTTP Range requests
     const range = req.headers.range;
     
-    const response = await fetch(downloadUrl, {
-      headers: headers,
-      redirect: 'follow'
-    });
-
-    if (!response.ok) {
-      throw new Error(`Google Drive retornou: ${response.status}`);
+    // Função auxiliar para verificar se é vídeo
+    function isVideo(buffer, contentType) {
+      if (!buffer || buffer.byteLength < 4) return false;
+      const firstBytes = new Uint8Array(buffer.slice(0, Math.min(100, buffer.length)));
+      const isMp4 = buffer.byteLength > 4 && 
+                     firstBytes[4] === 0x66 && firstBytes[5] === 0x74 && 
+                     firstBytes[6] === 0x79 && firstBytes[7] === 0x70; // 'ftyp'
+      const isWebM = buffer.byteLength > 4 && 
+                     firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && 
+                     firstBytes[2] === 0xDF && firstBytes[3] === 0xA3;
+      return isMp4 || isWebM || (contentType && contentType.includes('video'));
     }
-
-    const contentLength = response.headers.get('content-length');
-    let contentType = response.headers.get('content-type') || 'video/mp4';
     
-    // Verificar se o Google Drive retornou HTML (página de confirmação/erro)
-    // Ler primeiros bytes para detectar se é realmente vídeo
-    const buffer = await response.arrayBuffer();
-    const firstBytes = new Uint8Array(buffer.slice(0, Math.min(100, buffer.length)));
-    
-    // Verificar magic bytes de vídeo
-    const isMp4 = buffer.byteLength > 4 && 
-                   firstBytes[4] === 0x66 && firstBytes[5] === 0x74 && 
-                   firstBytes[6] === 0x79 && firstBytes[7] === 0x70; // 'ftyp'
-    const isWebM = buffer.byteLength > 4 && 
-                   firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && 
-                   firstBytes[2] === 0xDF && firstBytes[3] === 0xA3;
-    const isHTML = buffer.byteLength > 0 && 
-                   (firstBytes[0] === 0x3C || // '<'
-                    String.fromCharCode(...firstBytes.slice(0, 5)).toLowerCase().startsWith('<!do'));
-    
-    console.log(`[proxy-video] Content check:`, {
-      fileId,
-      contentType,
-      size: buffer.byteLength,
-      isMp4,
-      isWebM,
-      isHTML,
-      firstChars: String.fromCharCode(...firstBytes.slice(0, 50))
-    });
-    
-    if (isHTML || (!isMp4 && !isWebM && contentType.includes('text/html'))) {
-      // Google Drive retornou HTML - tentar URL alternativa
-      console.warn(`[proxy-video] Google Drive retornou HTML, tentando URL alternativa...`);
-      
-      // Tentar URL alternativa sem export=download
-      const altUrl = `https://drive.google.com/uc?id=${fileId}&export=download&confirm=t`;
-      const altResponse = await fetch(altUrl, {
-        headers: headers,
-        redirect: 'follow'
-      });
-      
-      if (altResponse.ok) {
-        const altContentType = altResponse.headers.get('content-type') || '';
-        const altBuffer = await altResponse.arrayBuffer();
-        const altFirstBytes = new Uint8Array(altBuffer.slice(0, Math.min(100, altBuffer.length)));
-        const altIsMp4 = altBuffer.byteLength > 4 && 
-                        altFirstBytes[4] === 0x66 && altFirstBytes[5] === 0x74 && 
-                        altFirstBytes[6] === 0x79 && altFirstBytes[7] === 0x70;
-        
-        if (altIsMp4 || altContentType.includes('video')) {
-          console.log(`[proxy-video] URL alternativa funcionou!`);
-          contentType = altContentType.includes('video') ? altContentType : 'video/mp4';
-          // Usar buffer alternativo
-          const altContentLength = altResponse.headers.get('content-length');
-          
-          if (range && altContentLength) {
-            const parts = range.replace(/bytes=/, '').split('-');
-            const start = parseInt(parts[0], 10);
-            const end = parts[1] ? parseInt(parts[1], 10) : parseInt(altContentLength, 10) - 1;
-            const chunkSize = (end - start) + 1;
-
-            const rangeResponse = await fetch(altUrl, {
-              headers: {
-                ...headers,
-                'Range': `bytes=${start}-${end}`
-              }
-            });
-
-            res.status(206);
-            res.set({
-              'Content-Range': `bytes ${start}-${end}/${altContentLength}`,
-              'Accept-Ranges': 'bytes',
-              'Content-Length': chunkSize,
-              'Content-Type': contentType,
-              'Cache-Control': 'public, max-age=3600'
-            });
-
-            const rangeBuffer = await rangeResponse.arrayBuffer();
-            return res.send(Buffer.from(rangeBuffer));
-          } else {
-            res.set({
-              'Content-Type': contentType,
-              'Content-Length': altContentLength || '',
-              'Accept-Ranges': 'bytes',
-              'Cache-Control': 'public, max-age=3600',
-              'Content-Disposition': `inline; filename="video.mp4"`
-            });
-            return res.send(Buffer.from(altBuffer));
-          }
+    // Função auxiliar para extrair código de confirmação do HTML e cookies
+    function extractConfirmCode(htmlText, responseHeaders) {
+      // 1. Tentar extrair de cookies da resposta
+      const setCookie = responseHeaders?.get?.('set-cookie');
+      if (setCookie) {
+        // Padrão: download_warning_XXXX=YYYY
+        const cookieMatch = setCookie.match(/download_warning_(\d+)=([a-zA-Z0-9_-]+)/);
+        if (cookieMatch && cookieMatch[2]) {
+          console.log(`[proxy-video] Código encontrado em cookie: ${cookieMatch[2]}`);
+          return cookieMatch[2];
         }
       }
       
-      // Se ainda for HTML, retornar erro
+      // 2. Procurar no HTML por padrões de confirmação
+      if (htmlText && htmlText.length > 0) {
+        // Padrão mais comum: href="/uc?export=download&id=FILE_ID&confirm=XXXX"
+        const hrefMatch = htmlText.match(/href=["']\/uc\?[^"']*confirm=([a-zA-Z0-9_-]+)["']/i);
+        if (hrefMatch && hrefMatch[1]) {
+          console.log(`[proxy-video] Código encontrado em href: ${hrefMatch[1]}`);
+          return hrefMatch[1];
+        }
+        
+        // Padrão: confirm=XXXX em qualquer URL
+        const confirmMatch = htmlText.match(/confirm=([a-zA-Z0-9_-]{4,})/i);
+        if (confirmMatch && confirmMatch[1] && confirmMatch[1] !== 't') {
+          console.log(`[proxy-video] Código encontrado em URL: ${confirmMatch[1]}`);
+          return confirmMatch[1];
+        }
+        
+        // Padrão: download_warning_XXXX em formulários
+        const warningMatch = htmlText.match(/download_warning_(\d+)/);
+        if (warningMatch && warningMatch[1]) {
+          console.log(`[proxy-video] Código encontrado em warning: ${warningMatch[1]}`);
+          return warningMatch[1];
+        }
+        
+        // Padrão: name="download_warning_XXXX" value="YYYY" ou input type="hidden"
+        const formMatch = htmlText.match(/name=["']download_warning_\d+["'][^>]*value=["']([^"']+)["']/i) ||
+                         htmlText.match(/value=["']([^"']+)["'][^>]*name=["']download_warning_\d+["']/i);
+        if (formMatch && formMatch[1]) {
+          console.log(`[proxy-video] Código encontrado em formulário: ${formMatch[1]}`);
+          return formMatch[1];
+        }
+        
+        // Padrão: onclick ou action com confirm
+        const actionMatch = htmlText.match(/action=["']([^"']*confirm=([a-zA-Z0-9_-]+)[^"']*)["']/i);
+        if (actionMatch && actionMatch[2]) {
+          console.log(`[proxy-video] Código encontrado em action: ${actionMatch[2]}`);
+          return actionMatch[2];
+        }
+        
+        // Padrão: window.location ou location.href com confirm
+        const locationMatch = htmlText.match(/location\.(href|replace)\(["'][^"']*confirm=([a-zA-Z0-9_-]+)[^"']*["']/i);
+        if (locationMatch && locationMatch[2]) {
+          console.log(`[proxy-video] Código encontrado em location: ${locationMatch[2]}`);
+          return locationMatch[2];
+        }
+      }
+      
+      return null;
+    }
+    
+    // Tentar múltiplas URLs em ordem de prioridade
+    const urlsToTry = [
+      `https://drive.google.com/uc?export=download&id=${fileId}`,
+      `https://drive.google.com/uc?id=${fileId}&export=download`,
+      `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
+    ];
+    
+    let finalBuffer = null;
+    let finalContentType = 'video/mp4';
+    let finalContentLength = null;
+    let finalUrl = null;
+    let cookieJar = []; // Cookie jar compartilhado entre todas as tentativas
+    
+    for (const url of urlsToTry) {
+      try {
+        console.log(`[proxy-video] Tentando URL: ${url}`);
+        
+        // Headers com cookies acumulados de tentativas anteriores
+        const requestHeaders = { ...headers };
+        if (cookieJar.length > 0) {
+          requestHeaders['Cookie'] = cookieJar.join('; ');
+        }
+        
+        const response = await fetch(url, {
+          headers: requestHeaders,
+          redirect: 'follow'
+        });
+
+        // Coletar cookies da resposta para próximas tentativas
+        const setCookieHeader = response.headers.get('set-cookie');
+        if (setCookieHeader) {
+          // Adicionar apenas se não existir já
+          if (!cookieJar.includes(setCookieHeader)) {
+            cookieJar.push(setCookieHeader);
+          }
+        }
+
+        if (!response.ok) {
+          console.warn(`[proxy-video] URL falhou com status ${response.status}`);
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        const buffer = await response.arrayBuffer();
+        
+        // Se for HTML, tentar extrair código de confirmação
+        if (contentType.includes('text/html') || buffer.byteLength < 1000) {
+          const htmlText = Buffer.from(buffer).toString('utf-8');
+          const confirmCode = extractConfirmCode(htmlText, response.headers);
+          
+          if (confirmCode) {
+            console.log(`[proxy-video] Código de confirmação encontrado: ${confirmCode}`);
+            // Tentar com código de confirmação - múltiplas variações
+            const confirmUrls = [
+              `https://drive.google.com/uc?export=download&id=${fileId}&confirm=${confirmCode}`,
+              `https://drive.google.com/uc?id=${fileId}&export=download&confirm=${confirmCode}`,
+              `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&uuid=${confirmCode}`
+            ];
+            
+            for (const confirmUrl of confirmUrls) {
+              try {
+                // Adicionar cookies coletados se houver
+                const confirmHeaders = { ...headers };
+                if (cookieJar.length > 0) {
+                  confirmHeaders['Cookie'] = cookieJar.join('; ');
+                }
+                
+                console.log(`[proxy-video] Tentando URL de confirmação: ${confirmUrl}`);
+                const confirmResponse = await fetch(confirmUrl, {
+                  headers: confirmHeaders,
+                  redirect: 'follow'
+                });
+                
+                // Coletar novos cookies da resposta de confirmação
+                const confirmSetCookie = confirmResponse.headers.get('set-cookie');
+                if (confirmSetCookie) {
+                  cookieJar.push(confirmSetCookie);
+                }
+                
+                if (confirmResponse.ok) {
+                  const confirmBuffer = await confirmResponse.arrayBuffer();
+                  const confirmContentType = confirmResponse.headers.get('content-type') || '';
+                  
+                  if (isVideo(confirmBuffer, confirmContentType)) {
+                    console.log(`[proxy-video] Download com código de confirmação funcionou! URL: ${confirmUrl}`);
+                    finalBuffer = confirmBuffer;
+                    finalContentType = confirmContentType.includes('video') ? confirmContentType : 'video/mp4';
+                    finalContentLength = confirmResponse.headers.get('content-length');
+                    finalUrl = confirmUrl;
+                    break;
+                  }
+                }
+              } catch (err) {
+                console.warn(`[proxy-video] Erro ao tentar URL de confirmação ${confirmUrl}:`, err.message);
+                continue;
+              }
+            }
+            
+            if (finalBuffer && isVideo(finalBuffer, finalContentType)) {
+              break; // Sucesso, sair do loop
+            }
+          }
+          continue; // Tentar próxima URL
+        }
+        
+        // Verificar se é vídeo
+        if (isVideo(buffer, contentType)) {
+          console.log(`[proxy-video] Vídeo encontrado na URL: ${url}`);
+          finalBuffer = buffer;
+          finalContentType = contentType.includes('video') ? contentType : 'video/mp4';
+          finalContentLength = response.headers.get('content-length');
+          finalUrl = url;
+          break;
+        }
+      } catch (error) {
+        console.warn(`[proxy-video] Erro ao tentar URL ${url}:`, error.message);
+        continue;
+      }
+    }
+    
+    // Se não encontrou vídeo em nenhuma URL, retornar erro
+    if (!finalBuffer || !isVideo(finalBuffer, finalContentType)) {
       return res.status(500).json({
-        error: 'Google Drive retornou página HTML ao invés de vídeo',
-        message: 'O arquivo pode estar protegido ou não estar disponível para download direto',
+        error: 'Não foi possível obter o vídeo do Google Drive',
+        message: 'O arquivo pode estar protegido, ser muito grande, ou não estar disponível para download direto. Certifique-se de que o arquivo está configurado para "Qualquer pessoa com o link pode visualizar".',
         fileId: fileId
       });
     }
     
-    // Ajustar contentType se detectamos vídeo pelos magic bytes
-    if (isMp4) contentType = 'video/mp4';
-    else if (isWebM) contentType = 'video/webm';
+    // Ajustar contentType baseado nos magic bytes
+    const firstBytes = new Uint8Array(finalBuffer.slice(0, 8));
+    if (firstBytes[4] === 0x66 && firstBytes[5] === 0x74 && firstBytes[6] === 0x79 && firstBytes[7] === 0x70) {
+      finalContentType = 'video/mp4';
+    } else if (firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && firstBytes[2] === 0xDF && firstBytes[3] === 0xA3) {
+      finalContentType = 'video/webm';
+    }
 
     // Se cliente solicitou Range, retornar parcial
-    if (range && contentLength) {
+    if (range && finalContentLength) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : parseInt(contentLength, 10) - 1;
+      const end = parts[1] ? parseInt(parts[1], 10) : parseInt(finalContentLength, 10) - 1;
       const chunkSize = (end - start) + 1;
 
-      // Buscar apenas o range solicitado
-      const rangeResponse = await fetch(downloadUrl, {
+      // Buscar apenas o range solicitado da URL final
+      const rangeResponse = await fetch(finalUrl, {
         headers: {
           ...headers,
           'Range': `bytes=${start}-${end}`
         }
       });
 
-      res.status(206);
-      res.set({
-        'Content-Range': `bytes ${start}-${end}/${contentLength}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600'
-      });
+      if (rangeResponse.ok) {
+        res.status(206);
+        res.set({
+          'Content-Range': `bytes ${start}-${end}/${finalContentLength}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': finalContentType,
+          'Cache-Control': 'public, max-age=3600'
+        });
 
-      const rangeBuffer = await rangeResponse.arrayBuffer();
-      res.send(Buffer.from(rangeBuffer));
-    } else {
-      // Download completo
-      res.set({
-        'Content-Type': contentType,
-        'Content-Length': buffer.byteLength || contentLength || '',
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=3600',
-        'Content-Disposition': `inline; filename="video.mp4"`
-      });
-
-      // Enviar buffer já lido
-      res.send(Buffer.from(buffer));
+        const rangeBuffer = await rangeResponse.arrayBuffer();
+        return res.send(Buffer.from(rangeBuffer));
+      }
     }
+    
+    // Download completo
+    res.set({
+      'Content-Type': finalContentType,
+      'Content-Length': finalBuffer.byteLength || finalContentLength || '',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=3600',
+      'Content-Disposition': `inline; filename="video.mp4"`
+    });
+
+    // Enviar buffer já lido
+    res.send(Buffer.from(finalBuffer));
   } catch (error) {
     console.error('[proxy-video] Erro:', error);
     res.status(500).json({ 
