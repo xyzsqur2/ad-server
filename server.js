@@ -481,7 +481,107 @@ app.get('/proxy-video', async (req, res) => {
     }
 
     const contentLength = response.headers.get('content-length');
-    const contentType = response.headers.get('content-type') || 'video/mp4';
+    let contentType = response.headers.get('content-type') || 'video/mp4';
+    
+    // Verificar se o Google Drive retornou HTML (página de confirmação/erro)
+    // Ler primeiros bytes para detectar se é realmente vídeo
+    const buffer = await response.arrayBuffer();
+    const firstBytes = new Uint8Array(buffer.slice(0, Math.min(100, buffer.length)));
+    
+    // Verificar magic bytes de vídeo
+    const isMp4 = buffer.byteLength > 4 && 
+                   firstBytes[4] === 0x66 && firstBytes[5] === 0x74 && 
+                   firstBytes[6] === 0x79 && firstBytes[7] === 0x70; // 'ftyp'
+    const isWebM = buffer.byteLength > 4 && 
+                   firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && 
+                   firstBytes[2] === 0xDF && firstBytes[3] === 0xA3;
+    const isHTML = buffer.byteLength > 0 && 
+                   (firstBytes[0] === 0x3C || // '<'
+                    String.fromCharCode(...firstBytes.slice(0, 5)).toLowerCase().startsWith('<!do'));
+    
+    console.log(`[proxy-video] Content check:`, {
+      fileId,
+      contentType,
+      size: buffer.byteLength,
+      isMp4,
+      isWebM,
+      isHTML,
+      firstChars: String.fromCharCode(...firstBytes.slice(0, 50))
+    });
+    
+    if (isHTML || (!isMp4 && !isWebM && contentType.includes('text/html'))) {
+      // Google Drive retornou HTML - tentar URL alternativa
+      console.warn(`[proxy-video] Google Drive retornou HTML, tentando URL alternativa...`);
+      
+      // Tentar URL alternativa sem export=download
+      const altUrl = `https://drive.google.com/uc?id=${fileId}&export=download&confirm=t`;
+      const altResponse = await fetch(altUrl, {
+        headers: headers,
+        redirect: 'follow'
+      });
+      
+      if (altResponse.ok) {
+        const altContentType = altResponse.headers.get('content-type') || '';
+        const altBuffer = await altResponse.arrayBuffer();
+        const altFirstBytes = new Uint8Array(altBuffer.slice(0, Math.min(100, altBuffer.length)));
+        const altIsMp4 = altBuffer.byteLength > 4 && 
+                        altFirstBytes[4] === 0x66 && altFirstBytes[5] === 0x74 && 
+                        altFirstBytes[6] === 0x79 && altFirstBytes[7] === 0x70;
+        
+        if (altIsMp4 || altContentType.includes('video')) {
+          console.log(`[proxy-video] URL alternativa funcionou!`);
+          contentType = altContentType.includes('video') ? altContentType : 'video/mp4';
+          // Usar buffer alternativo
+          const altContentLength = altResponse.headers.get('content-length');
+          
+          if (range && altContentLength) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : parseInt(altContentLength, 10) - 1;
+            const chunkSize = (end - start) + 1;
+
+            const rangeResponse = await fetch(altUrl, {
+              headers: {
+                ...headers,
+                'Range': `bytes=${start}-${end}`
+              }
+            });
+
+            res.status(206);
+            res.set({
+              'Content-Range': `bytes ${start}-${end}/${altContentLength}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunkSize,
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=3600'
+            });
+
+            const rangeBuffer = await rangeResponse.arrayBuffer();
+            return res.send(Buffer.from(rangeBuffer));
+          } else {
+            res.set({
+              'Content-Type': contentType,
+              'Content-Length': altContentLength || '',
+              'Accept-Ranges': 'bytes',
+              'Cache-Control': 'public, max-age=3600',
+              'Content-Disposition': `inline; filename="video.mp4"`
+            });
+            return res.send(Buffer.from(altBuffer));
+          }
+        }
+      }
+      
+      // Se ainda for HTML, retornar erro
+      return res.status(500).json({
+        error: 'Google Drive retornou página HTML ao invés de vídeo',
+        message: 'O arquivo pode estar protegido ou não estar disponível para download direto',
+        fileId: fileId
+      });
+    }
+    
+    // Ajustar contentType se detectamos vídeo pelos magic bytes
+    if (isMp4) contentType = 'video/mp4';
+    else if (isWebM) contentType = 'video/webm';
 
     // Se cliente solicitou Range, retornar parcial
     if (range && contentLength) {
@@ -507,20 +607,19 @@ app.get('/proxy-video', async (req, res) => {
         'Cache-Control': 'public, max-age=3600'
       });
 
-      const buffer = await rangeResponse.arrayBuffer();
-      res.send(Buffer.from(buffer));
+      const rangeBuffer = await rangeResponse.arrayBuffer();
+      res.send(Buffer.from(rangeBuffer));
     } else {
       // Download completo
       res.set({
         'Content-Type': contentType,
-        'Content-Length': contentLength || '',
+        'Content-Length': buffer.byteLength || contentLength || '',
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=3600',
         'Content-Disposition': `inline; filename="video.mp4"`
       });
 
-      // Stream do vídeo
-      const buffer = await response.arrayBuffer();
+      // Enviar buffer já lido
       res.send(Buffer.from(buffer));
     }
   } catch (error) {
