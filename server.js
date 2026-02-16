@@ -446,6 +446,92 @@ app.get('/proxy-image', async (req, res) => {
   }
 });
 
+// Proxy para vídeo do Google Drive
+app.get('/proxy-video', async (req, res) => {
+  try {
+    const fileId = req.query.id;
+    
+    if (!fileId) {
+      return res.status(400).json({ 
+        error: 'File ID é obrigatório',
+        message: 'Use: /proxy-video?id={FILE_ID}'
+      });
+    }
+
+    // URL de download do Google Drive
+    const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    
+    // Headers para simular navegador
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://drive.google.com/',
+      'Accept': '*/*'
+    };
+
+    // Suporte a HTTP Range requests
+    const range = req.headers.range;
+    
+    const response = await fetch(downloadUrl, {
+      headers: headers,
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Drive retornou: ${response.status}`);
+    }
+
+    const contentLength = response.headers.get('content-length');
+    const contentType = response.headers.get('content-type') || 'video/mp4';
+
+    // Se cliente solicitou Range, retornar parcial
+    if (range && contentLength) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : parseInt(contentLength, 10) - 1;
+      const chunkSize = (end - start) + 1;
+
+      // Buscar apenas o range solicitado
+      const rangeResponse = await fetch(downloadUrl, {
+        headers: {
+          ...headers,
+          'Range': `bytes=${start}-${end}`
+        }
+      });
+
+      res.status(206);
+      res.set({
+        'Content-Range': `bytes ${start}-${end}/${contentLength}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600'
+      });
+
+      const buffer = await rangeResponse.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } else {
+      // Download completo
+      res.set({
+        'Content-Type': contentType,
+        'Content-Length': contentLength || '',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=3600',
+        'Content-Disposition': `inline; filename="video.mp4"`
+      });
+
+      // Stream do vídeo
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    }
+  } catch (error) {
+    console.error('[proxy-video] Erro:', error);
+    res.status(500).json({ 
+      error: 'Erro ao baixar vídeo',
+      message: error.message 
+    });
+  }
+});
+
 // Obter próximo anúncio - RETORNA HTML COMERCIAL
 app.get('/ad/next', (req, res) => {
   res.set('Cache-Control', 'no-store');
