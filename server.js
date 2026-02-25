@@ -2528,8 +2528,9 @@ const requireAppCheck = async (req, res, next) => {
   const appCheckToken = req.headers['x-firebase-appcheck'];
 
   if (!appCheckToken) {
-    console.warn('⚠️ [PakKey] Requisição sem X-Firebase-AppCheck header');
-    return res.status(401).json({ success: false, error: 'unauthorized', message: 'App Check token obrigatório' });
+    console.warn('⚠️ [PakKey] Requisição sem X-Firebase-AppCheck header - PERMITINDO (Modo Debug/Unenforced)');
+    // return res.status(401).json({ success: false, error: 'unauthorized', message: 'App Check token obrigatório' });
+    return next(); // Pula a verificação se o token estiver ausente
   }
 
   try {
