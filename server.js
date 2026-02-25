@@ -2533,12 +2533,19 @@ const requireAppCheck = async (req, res, next) => {
 
   try {
     // Reutiliza a app Firebase já inicializada pelo FirebaseTrackingService ('ad-tracking')
-    const fbApp = admin.app('ad-tracking');
+    let fbApp;
+    try {
+      fbApp = admin.app('ad-tracking');
+    } catch (appErr) {
+      console.error('❌ [PakKey] Firebase app "ad-tracking" não encontrada:', appErr.message);
+      return res.status(500).json({ success: false, error: 'server_misconfiguration', message: 'Firebase não inicializado no servidor' });
+    }
+
     const decodedToken = await fbApp.appCheck().verifyToken(appCheckToken);
     req.appCheckToken = decodedToken;
     next();
   } catch (err) {
-    console.warn('⚠️ [PakKey] App Check token inválido:', err.message);
+    console.warn('⚠️ [PakKey] App Check token inválido:', err.code, '-', err.message);
     return res.status(403).json({ success: false, error: 'forbidden', message: 'App Check token inválido ou expirado' });
   }
 };
