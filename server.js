@@ -65,7 +65,7 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'x-admin-token', 'x-dashboard-token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'x-admin-token', 'x-dashboard-token', 'x-firebase-appcheck'],
   exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length'],
   credentials: false,
   maxAge: 86400
@@ -2514,6 +2514,72 @@ app.post('/api/admin/migrate-geolocation', async (req, res) => {
       message: 'Erro ao executar migração. Verifique os logs do servidor.'
     });
   }
+});
+
+// ========== PAK KEY ENDPOINT ==========
+
+/**
+ * Middleware: valida Firebase App Check token (header X-Firebase-AppCheck)
+ * Apenas APKs assinados com o keystore correto (Play Integrity) conseguem um token válido.
+ * Não requer login do usuário — funciona na inicialização sem autenticação.
+ */
+const requireAppCheck = async (req, res, next) => {
+  const appCheckToken = req.headers['x-firebase-appcheck'];
+
+  if (!appCheckToken) {
+    console.warn('⚠️ [PakKey] Requisição sem X-Firebase-AppCheck header');
+    return res.status(401).json({ success: false, error: 'unauthorized', message: 'App Check token obrigatório' });
+  }
+
+  try {
+    // Reutiliza a app Firebase já inicializada pelo FirebaseTrackingService ('ad-tracking')
+    const fbApp = admin.app('ad-tracking');
+    const decodedToken = await fbApp.appCheck().verifyToken(appCheckToken);
+    req.appCheckToken = decodedToken;
+    next();
+  } catch (err) {
+    console.warn('⚠️ [PakKey] App Check token inválido:', err.message);
+    return res.status(403).json({ success: false, error: 'forbidden', message: 'App Check token inválido ou expirado' });
+  }
+};
+
+/**
+ * Rate limit específico para /api/pak-key
+ * - Máximo 10 requisições por IP a cada 5 minutos
+ */
+const pakKeyLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getClientIP(req),
+  handler: (req, res) => {
+    console.warn(`⚠️ [PakKey] Rate limit excedido: ${getClientIP(req)}`);
+    res.status(429).json({ success: false, error: 'too_many_requests', message: 'Muitas requisições. Tente novamente em 5 minutos.' });
+  }
+});
+
+/**
+ * POST /api/pak-key
+ * Retorna a chave AES do assets.pak.enc apenas para usuários autenticados via Firebase.
+ * A chave é lida de PAK_AES_KEY_HEX (variável de ambiente — nunca commitar no repo).
+ */
+app.post('/api/pak-key', pakKeyLimiter, requireAppCheck, (req, res) => {
+  const hexKey = process.env.PAK_AES_KEY_HEX;
+
+  if (!hexKey) {
+    console.error('❌ [PakKey] PAK_AES_KEY_HEX não configurado no environment!');
+    return res.status(500).json({ success: false, error: 'server_misconfiguration', message: 'Chave PAK não configurada no servidor' });
+  }
+
+  if (!/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+    console.error('❌ [PakKey] PAK_AES_KEY_HEX inválida (deve ser 64 hex chars = 32 bytes)');
+    return res.status(500).json({ success: false, error: 'server_misconfiguration', message: 'Chave PAK mal configurada no servidor' });
+  }
+
+  const keyBase64 = Buffer.from(hexKey, 'hex').toString('base64');
+  console.log(`✅ [PakKey] Chave entregue via App Check (sub: ${req.appCheckToken?.sub})`);
+  res.json({ success: true, key: keyBase64 });
 });
 
 // Iniciar servidor
