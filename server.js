@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import admin from 'firebase-admin';
 import { IPGeolocationService } from './services/ip-geolocation.service.js';
 import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
 import { ActivationKeysService } from './services/activation-keys.service.js';
