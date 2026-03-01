@@ -48,8 +48,8 @@ function initializeFirebase() {
     firebaseApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       projectId: serviceAccount.project_id,
-      databaseURL: serviceAccount.databaseURL || 'https://notification-sistem-default-rtdb.asia-southeast1.firebasedatabase.app'
-    }, 'ad-tracking');
+      databaseURL: "https://sysactivation-507d6-default-rtdb.firebaseio.com"
+    });
 
     database = admin.database(firebaseApp);
     console.log('✅ Firebase Admin inicializado para tracking');
