@@ -49,7 +49,7 @@ function initializeFirebase() {
       credential: admin.credential.cert(serviceAccount),
       projectId: serviceAccount.project_id,
       databaseURL: "https://sysactivation-507d6-default-rtdb.firebaseio.com"
-    });
+    }, 'ad-tracking');
 
     database = admin.database(firebaseApp);
     console.log('✅ Firebase Admin inicializado para tracking');
