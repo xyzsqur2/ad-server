@@ -22,34 +22,48 @@ function initializeFirebase() {
 
   try {
     const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || 'firebase-service-account-key.json';
-    // Tentar múltiplos caminhos possíveis
+    
+    // Caminhos possíveis para procurar o arquivo de chave
     const possiblePaths = [
-      join(__dirname, '..', '..', serviceAccountPath), // Raiz do projeto
-      join(__dirname, '..', serviceAccountPath), // Dentro de ad-server
-      serviceAccountPath // Caminho absoluto ou relativo ao CWD
+      '/etc/secrets/firebase-service-account-key.json', // Caminho padrão de Secrets no Render
+      serviceAccountPath, // Caminho da variável de ambiente (absoluto ou relativo ao CWD)
+      join(process.cwd(), serviceAccountPath), // Relativo ao diretório de trabalho atual
+      join(__dirname, '..', '..', 'firebase-service-account-key.json'), // Raiz do projeto (desenv)
+      join(__dirname, '..', 'firebase-service-account-key.json') // Raiz do servidor (desenv)
     ];
     
     let fullPath = null;
+    console.log('🔍 [FirebaseTracking] Procurando chave de serviço em:');
+    
     for (const path of possiblePaths) {
+      // Ignorar caminhos vazios ou indefinidos
+      if (!path) continue;
+      
+      console.log(`   - ${path}`);
       if (existsSync(path)) {
         fullPath = path;
+        console.log(`   ✅ Encontrado: ${path}`);
         break;
       }
     }
     
     if (!fullPath) {
-      console.log('⚠️  Arquivo Firebase service account não encontrado - tracking será apenas em logs');
-      console.log('⚠️  Procurou em:', possiblePaths);
+      console.error('❌ [FirebaseTracking] Arquivo de chave de serviço NÃO encontrado em nenhum local!');
       return { app: null, database: null };
     }
 
-    const serviceAccount = JSON.parse(readFileSync(fullPath, 'utf8'));
+    const fileContent = readFileSync(fullPath, 'utf8');
+    const serviceAccount = JSON.parse(fileContent);
 
-    firebaseApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: serviceAccount.project_id,
-      databaseURL: "https://sysactivation-507d6-default-rtdb.firebaseio.com"
-    }, 'ad-tracking');
+    console.log(`🔍 [FirebaseTracking] Carregado Project ID: ${serviceAccount.project_id}`);
+
+    if (!firebaseApp) {
+      firebaseApp = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id,
+        databaseURL: "https://sysactivation-507d6-default-rtdb.firebaseio.com"
+      }, 'ad-tracking');
+    }
 
     database = admin.database(firebaseApp);
     console.log('✅ Firebase Admin inicializado para tracking');
