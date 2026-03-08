@@ -1324,9 +1324,7 @@ app.get('/ad/next', (req, res) => {
 </head>
 <body>
   <div class="ad-container">
-    <div class="ad-image-wrapper">
-      <img src="${imageUrl}" alt="Entretenimento Premium" class="ad-image" />
-    </div>
+    
     <div class="ad-content">
       <h1 class="ad-title">🎬Transforme Seu Entretenimento</h1>
       <p class="ad-subtitle">Aplicativo de Filmes, Séries e Animes </p>
@@ -1335,15 +1333,7 @@ app.get('/ad/next', (req, res) => {
         ✨ Milhares de Filmes,Séries e Animes Esperando por Você ✨
       </div>   
       
-      <ul class="ad-features">
-        <li>Clique no botão "Assista Agora" para ir ao Site do WatchVerse</li>
-        <li>Insira seu email no campo ativar</li>
-        <li>Voce receberá um email com um numero de confirmação que deverá ser inserido no campo "Ativar"</li>
-        <li>Depois da confirmação de pagamento pix a chave de ativação é gerada na tela</li>
-        <li>Agora é só inserir a chave de ativação no campo "Ativar" e aproveitar um mês de acesso</li>
-        <li>As atualizações de conteúdo são semanais </li>
-      </ul>
-      
+           
       <a href="${clickUrl}" class="ad-cta" target="_blank" rel="noopener noreferrer">
         Começar Agora - É Grátis! 🚀
       </a>
