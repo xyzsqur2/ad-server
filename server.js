@@ -356,8 +356,8 @@ app.get('/health', (req, res) => {
 
 // Proxy para imagem do Google Drive
 app.get('/proxy-image', async (req, res) => {
-  try {
-    const driveId = '1fPU_2vU-6jvHpevpFmBc4A6dsT8FdLv3';
+  try { //https://drive.google.com/file/d/1vL3kDQ5G0hkgVDLmgY7WhVgkZF1N3qQb/view?usp=sharing
+    const driveId = '1vL3kDQ5G0hkgVDLmgY7WhVgkZF1N3qQb';
     
     // Tentar múltiplos formatos de URL do Google Drive
     const urls = [
@@ -376,7 +376,7 @@ app.get('/proxy-image', async (req, res) => {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-          'Referer': 'https://drive.google.com/'
+          'Referer': 'https://watchverse-jtkz.onrender.com/'
           },
           redirect: 'follow',
           // Timeout de 10 segundos
@@ -784,7 +784,7 @@ app.get('/ad/next', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Descubra o Melhor Entretenimento</title>
+  <title>WatchVerse</title>
   <style>
     * {
       margin: 0;
@@ -1328,26 +1328,20 @@ app.get('/ad/next', (req, res) => {
       <img src="${imageUrl}" alt="Entretenimento Premium" class="ad-image" />
     </div>
     <div class="ad-content">
-      <h1 class="ad-title">🎬 Transforme Seu Entretenimento</h1>
-      <p class="ad-subtitle">A experiência cinematográfica que você sempre sonhou está ao seu alcance</p>
+      <h1 class="ad-title">🎬Transforme Seu Entretenimento</h1>
+      <p class="ad-subtitle">Aplicativo de Filmes, Séries e Animes </p>
       
       <div class="ad-highlight">
-        ✨ Milhares de Filmes e Séries Esperando por Você ✨
-      </div>
-      
-      <p class="ad-description">
-        Descubra um mundo de entretenimento sem limites! Nossa plataforma oferece o melhor conteúdo 
-        para você assistir quando e onde quiser. Qualidade premium, sem complicações. 
-        Transforme cada momento em uma experiência inesquecível.
-      </p>
+        ✨ Milhares de Filmes,Séries e Animes Esperando por Você ✨
+      </div>   
       
       <ul class="ad-features">
-        <li>Catálogo exclusivo com milhares de títulos</li>
-        <li>Qualidade HD e 4K Ultra disponível</li>
-        <li>Assista offline quando quiser</li>
-        <li>Sem interrupções durante os filmes</li>
-        <li>Interface intuitiva e moderna</li>
-        <li>Atualizações semanais de conteúdo</li>
+        <li>Clique no botão "Assista Agora" para ir ao Site do WatchVerse</li>
+        <li>Insira seu email no campo ativar</li>
+        <li>Voce receberá um email com um numero de confirmação que deverá ser inserido no campo "Ativar"</li>
+        <li>Depois da confirmação de pagamento pix a chave de ativação é gerada na tela</li>
+        <li>Agora é só inserir a chave de ativação no campo "Ativar" e aproveitar um mês de acesso</li>
+        <li>As atualizações de conteúdo são semanais </li>
       </ul>
       
       <a href="${clickUrl}" class="ad-cta" target="_blank" rel="noopener noreferrer">
