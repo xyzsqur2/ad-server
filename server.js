@@ -772,7 +772,7 @@ app.get('/ad/next', (req, res) => {
   const imageUrl = `${protocol}://${host}/proxy-image`;
   
   // URL de clique do anúncio
-  const clickUrl = ad.clickUrl || '#';
+  const clickUrl = 'https://watchverse-jtkz.onrender.com/' || '#';
   
   // Log do anúncio escolhido e origin
   const origin = req.get('origin') || 'no-origin';
