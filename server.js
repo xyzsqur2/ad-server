@@ -8,6 +8,7 @@ import admin from 'firebase-admin';
 import { IPGeolocationService } from './services/ip-geolocation.service.js';
 import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
 import { ActivationKeysService } from './services/activation-keys.service.js';
+import { DeviceSecurityService } from './services/device-security.service.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -209,9 +210,11 @@ const authenticateDashboardToken = (req, res, next) => {
 const ipGeoService = new IPGeolocationService();
 const firebaseTracking = new FirebaseTrackingService(); // Inicializa Firebase 'ad-tracking' PRIMEIRO
 const activationKeys = new ActivationKeysService(); // Usa a mesma app 'ad-tracking'
+const deviceSecurity = new DeviceSecurityService(); // Usa a mesma app 'ad-tracking'
 
 // Diagnóstico: verificar se ActivationKeys está operacional
 console.log(`📊 ActivationKeys status: ${activationKeys._disabled ? '❌ DESABILITADO' : '✅ OPERACIONAL'}`);
+console.log(`📊 DeviceSecurity status: ${deviceSecurity._disabled ? '❌ DESABILITADO' : '✅ OPERACIONAL'}`);
 
 // Função auxiliar para gerar ID
 function generateId() {
@@ -1720,6 +1723,168 @@ app.get('/api/analytics/geolocation', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar analytics:', error);
     res.status(500).json({ error: 'Erro ao buscar dados' });
+  }
+});
+
+// ========== SEGURANÇA DE DISPOSITIVOS (Firebase device_security/<ID>) ==========
+
+// Rate limiter para validação de segurança de dispositivos
+const deviceSecurityLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10, // 10 tentativas por minuto por IP
+  message: 'Muitas tentativas de validação de segurança. Tente novamente em 1 minuto.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => getClientIP(req),
+  handler: (req, res) => {
+    console.warn(`⚠️ [RateLimit] Muitas tentativas de validação de segurança do IP: ${getClientIP(req)}`);
+    res.status(429).json({ 
+      success: false, 
+      error: 'too_many_requests',
+      message: 'Muitas tentativas. Aguarde 1 minuto.'
+    });
+  }
+});
+
+// Endpoint para validar segurança do dispositivo
+app.post('/api/device-security/validate', deviceSecurityLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/json; charset=utf-8');
+
+  try {
+    const deviceInfo = req.body;
+    
+    // Validar campos obrigatórios
+    if (!deviceInfo.deviceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'missing_device_id',
+        message: 'deviceId é obrigatório'
+      });
+    }
+
+    // Validar dispositivo (inclui verificação de blocklist)
+    const result = await deviceSecurity.validateDevice(deviceInfo);
+
+    // Retornar resultado
+    const statusCode = result.allowed ? 200 : 403;
+    return res.status(statusCode).json({
+      success: true,
+      ...result
+    });
+
+  } catch (error) {
+    console.error('[DeviceSecurity] Erro no endpoint de validação:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error',
+      message: 'Erro ao validar dispositivo'
+    });
+  }
+});
+
+// Endpoint para obter estatísticas de segurança (Dashboard)
+app.get('/api/device-security/stats', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/json; charset=utf-8');
+
+  try {
+    const { startDate, endDate } = req.query;
+    
+    const filters = {};
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+
+    const result = await deviceSecurity.getSecurityStats(filters);
+    return res.json(result);
+
+  } catch (error) {
+    console.error('[DeviceSecurity] Erro ao obter estatísticas:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error'
+    });
+  }
+});
+
+// Endpoint para bloquear dispositivo manualmente (Dashboard - requer autenticação)
+app.post('/api/device-security/block/:deviceId', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/json; charset=utf-8');
+
+  try {
+    // Verificar token de admin (usando mesmo padrão dos outros endpoints admin)
+    const adminToken = req.headers['x-admin-token'] || req.headers['x-dashboard-token'];
+    const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+    
+    if (adminToken !== expectedToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'unauthorized',
+        message: 'Token inválido'
+      });
+    }
+
+    const { deviceId } = req.params;
+    const { reason } = req.body || {};
+
+    const result = await deviceSecurity.blockDevice(deviceId, reason);
+    
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: 'Dispositivo bloqueado com sucesso'
+      });
+    } else {
+      return res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('[DeviceSecurity] Erro ao bloquear dispositivo:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error'
+    });
+  }
+});
+
+// Endpoint para desbloquear dispositivo (Dashboard - requer autenticação)
+app.post('/api/device-security/unblock/:deviceId', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/json; charset=utf-8');
+
+  try {
+    // Verificar token de admin
+    const adminToken = req.headers['x-admin-token'] || req.headers['x-dashboard-token'];
+    const expectedToken = process.env.ADMIN_TOKEN || 'admin-token-2026';
+    
+    if (adminToken !== expectedToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'unauthorized',
+        message: 'Token inválido'
+      });
+    }
+
+    const { deviceId } = req.params;
+
+    const result = await deviceSecurity.unblockDevice(deviceId);
+    
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: 'Dispositivo desbloqueado com sucesso'
+      });
+    } else {
+      return res.status(500).json(result);
+    }
+
+  } catch (error) {
+    console.error('[DeviceSecurity] Erro ao desbloquear dispositivo:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'server_error'
+    });
   }
 });
 
