@@ -8,6 +8,8 @@ import admin from 'firebase-admin';
 import { IPGeolocationService } from './services/ip-geolocation.service.js';
 import { FirebaseTrackingService } from './services/firebase-tracking.service.js';
 import { ActivationKeysService } from './services/activation-keys.service.js';
+import { router as tmdbApiRouter } from './routes/tmdb-api.js';
+import precacheJob from './jobs/precache.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -96,6 +98,8 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
+app.use('/api', tmdbApiRouter);
 
 // ========== RATE LIMITING ==========
 
@@ -2599,6 +2603,13 @@ app.listen(PORT, () => {
   
   console.log(`\n📝 Exemplo de configuração ALLOWED_ORIGINS:`);
   console.log(`   ALLOWED_ORIGINS=http://localhost:3000,capacitor://localhost,http://localhost`);
+
+  try {
+    precacheJob.start();
+    console.log('✅ TMDb precache iniciado');
+  } catch (error) {
+    console.error('❌ Erro ao iniciar TMDb precache:', error?.message || error);
+  }
 });
 
 /*
