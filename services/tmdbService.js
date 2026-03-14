@@ -78,3 +78,32 @@ export async function getTrendingTv(page = 1) {
   return requestJson('/trending/tv/week', { page });
 }
 
+export async function getTrending(mediaType = 'all', timeWindow = 'day', page = 1) {
+  const mt = String(mediaType);
+  const tw = String(timeWindow);
+  return requestJson(`/trending/${mt}/${tw}`, { page });
+}
+
+export async function searchMulti(query, page = 1) {
+  return requestJson('/search/multi', { query, include_adult: false, page });
+}
+
+export async function getTvSeasonDetails(tvId, seasonNumber) {
+  return requestJson(`/tv/${tvId}/season/${seasonNumber}`);
+}
+
+export async function getUpcomingMovies(page = 1) {
+  return requestJson('/movie/upcoming', { page });
+}
+
+export async function getAiringTodayTv(page = 1) {
+  return requestJson('/tv/airing_today', { page });
+}
+
+export async function discoverMovie(params = {}) {
+  return requestJson('/discover/movie', params);
+}
+
+export async function discoverTv(params = {}) {
+  return requestJson('/discover/tv', params);
+}
