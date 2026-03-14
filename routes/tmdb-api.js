@@ -203,6 +203,8 @@ router.get('/discover/movie', async (req, res) => {
   const params = {
     page,
     with_genres: req.query.with_genres,
+    'primary_release_date.gte': req.query['primary_release_date.gte'],
+    'primary_release_date.lte': req.query['primary_release_date.lte'],
     sort_by: req.query.sort_by,
     include_adult: req.query.include_adult,
     language: req.query.language
