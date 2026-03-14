@@ -50,28 +50,6 @@ function serializeParams(params) {
   return entries.map(([k, v]) => `${k}=${v}`).join('&');
 }
 
-router.get('/movie/:id', async (req, res) => {
-  try {
-    const id = String(req.params.id);
-    const key = getCacheKey('movie', id);
-    const data = await wrap(key, () => getMovieDetails(id));
-    res.json(data);
-  } catch (e) {
-    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
-  }
-});
-
-router.get('/tv/:id', async (req, res) => {
-  try {
-    const id = String(req.params.id);
-    const key = getCacheKey('tv', id);
-    const data = await wrap(key, () => getTvDetails(id));
-    res.json(data);
-  } catch (e) {
-    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
-  }
-});
-
 router.get('/tv/:tvId/season/:seasonNumber', async (req, res) => {
   try {
     const tvId = String(req.params.tvId);
@@ -253,6 +231,28 @@ router.get('/discover/tv', async (req, res) => {
   try {
     const key = getCacheKey('discover_tv', serializeParams(params));
     const data = await wrap(key, () => discoverTv(params));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/movie/:id(\\d+)', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const key = getCacheKey('movie', id);
+    const data = await wrap(key, () => getMovieDetails(id));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/tv/:id(\\d+)', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const key = getCacheKey('tv', id);
+    const data = await wrap(key, () => getTvDetails(id));
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: 'TMDb request failed', details: e?.message });
