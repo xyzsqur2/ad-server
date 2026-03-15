@@ -108,6 +108,22 @@ export async function getMovieCredits(id, language) {
   return requestJson(`/movie/${id}/credits`, language ? { language } : {});
 }
 
+export async function getTvCredits(id, language) {
+  return requestJson(`/tv/${id}/credits`, language ? { language } : {});
+}
+
+export async function getPersonDetails(id, language) {
+  return requestJson(`/person/${id}`, language ? { language } : {});
+}
+
+export async function getPersonCombinedCredits(id, language) {
+  return requestJson(`/person/${id}/combined_credits`, language ? { language } : {});
+}
+
+export async function getPersonExternalIds(id) {
+  return requestJson(`/person/${id}/external_ids`, {});
+}
+
 export async function discoverMovie(params = {}) {
   return requestJson('/discover/movie', params);
 }

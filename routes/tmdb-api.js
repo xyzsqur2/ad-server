@@ -4,6 +4,10 @@ import {
   getMovieDetails,
   getMovieVideos,
   getMovieCredits,
+  getTvCredits,
+  getPersonDetails,
+  getPersonCombinedCredits,
+  getPersonExternalIds,
   getTvDetails,
   getTvSeasonDetails,
   searchMovie,
@@ -90,6 +94,61 @@ router.get('/movie/:movieId/credits', async (req, res) => {
     const language = req.query.language ? String(req.query.language) : undefined;
     const key = getCacheKey('movie_credits', movieId, language ? `lang_${language}` : 'lang_default');
     const data = await wrap(key, () => getMovieCredits(movieId, language));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/tv/:tvId/credits', async (req, res) => {
+  try {
+    const tvId = String(req.params.tvId);
+    const language = req.query.language ? String(req.query.language) : undefined;
+    const key = getCacheKey('tv_credits', tvId, language ? `lang_${language}` : 'lang_default');
+    const data = await wrap(key, () => getTvCredits(tvId, language));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/person/:personId', async (req, res) => {
+  try {
+    const personId = String(req.params.personId);
+    const language = req.query.language ? String(req.query.language) : undefined;
+    const key = getCacheKey('person_details', personId, language ? `lang_${language}` : 'lang_default');
+    const data = await wrap(key, async () => {
+      const primary = await getPersonDetails(personId, language);
+      const bio = String(primary?.biography || '').trim();
+      if (bio) return primary;
+      if (language && language !== 'en-US') {
+        return getPersonDetails(personId, 'en-US');
+      }
+      return primary;
+    });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/person/:personId/combined_credits', async (req, res) => {
+  try {
+    const personId = String(req.params.personId);
+    const language = req.query.language ? String(req.query.language) : undefined;
+    const key = getCacheKey('person_combined_credits', personId, language ? `lang_${language}` : 'lang_default');
+    const data = await wrap(key, () => getPersonCombinedCredits(personId, language));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/person/:personId/external_ids', async (req, res) => {
+  try {
+    const personId = String(req.params.personId);
+    const key = getCacheKey('person_external_ids', personId);
+    const data = await wrap(key, () => getPersonExternalIds(personId));
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: 'TMDb request failed', details: e?.message });
