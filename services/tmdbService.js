@@ -100,6 +100,14 @@ export async function getAiringTodayTv(page = 1) {
   return requestJson('/tv/airing_today', { page });
 }
 
+export async function getMovieVideos(id, language) {
+  return requestJson(`/movie/${id}/videos`, language ? { language } : {});
+}
+
+export async function getMovieCredits(id, language) {
+  return requestJson(`/movie/${id}/credits`, language ? { language } : {});
+}
+
 export async function discoverMovie(params = {}) {
   return requestJson('/discover/movie', params);
 }

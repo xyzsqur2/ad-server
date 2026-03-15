@@ -2,6 +2,8 @@ import express from 'express';
 import { getCacheKey, wrap } from '../cache/cacheManager.js';
 import {
   getMovieDetails,
+  getMovieVideos,
+  getMovieCredits,
   getTvDetails,
   getTvSeasonDetails,
   searchMovie,
@@ -56,6 +58,38 @@ router.get('/tv/:tvId/season/:seasonNumber', async (req, res) => {
     const seasonNumber = String(req.params.seasonNumber);
     const key = getCacheKey('tv_season', tvId, 'season', seasonNumber);
     const data = await wrap(key, () => getTvSeasonDetails(tvId, seasonNumber));
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/movie/:movieId/videos', async (req, res) => {
+  try {
+    const movieId = String(req.params.movieId);
+    const language = req.query.language ? String(req.query.language) : undefined;
+    const key = getCacheKey('movie_videos', movieId, language ? `lang_${language}` : 'lang_default');
+    const data = await wrap(key, async () => {
+      const primary = await getMovieVideos(movieId, language);
+      const results = primary?.results || [];
+      if (results.length) return primary;
+      if (language && language !== 'en-US') {
+        return getMovieVideos(movieId, 'en-US');
+      }
+      return primary;
+    });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'TMDb request failed', details: e?.message });
+  }
+});
+
+router.get('/movie/:movieId/credits', async (req, res) => {
+  try {
+    const movieId = String(req.params.movieId);
+    const language = req.query.language ? String(req.query.language) : undefined;
+    const key = getCacheKey('movie_credits', movieId, language ? `lang_${language}` : 'lang_default');
+    const data = await wrap(key, () => getMovieCredits(movieId, language));
     res.json(data);
   } catch (e) {
     res.status(502).json({ error: 'TMDb request failed', details: e?.message });
@@ -202,7 +236,9 @@ router.get('/discover/movie', async (req, res) => {
   const page = normalizePage(req.query.page);
   const params = {
     page,
+    region: req.query.region,
     with_genres: req.query.with_genres,
+    without_genres: req.query.without_genres,
     'primary_release_date.gte': req.query['primary_release_date.gte'],
     'primary_release_date.lte': req.query['primary_release_date.lte'],
     sort_by: req.query.sort_by,
