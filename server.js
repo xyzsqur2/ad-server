@@ -775,7 +775,7 @@ app.get('/ad/next', (req, res) => {
   const imageUrl = `${protocol}://${host}/imagem/${ad.id}`;
   const videoUrl = `${protocol}://${host}/video/${ad.id}`;
   
-  const clickUrl = ad.clickUrl || 'https://watchverse-jtkz.onrender.com/';
+  const clickUrl = ad.clickUrl || ' ';
   
   // Log do anúncio escolhido e origin
   const origin = req.get('origin') || 'no-origin';
