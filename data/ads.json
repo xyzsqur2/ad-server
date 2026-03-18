@@ -5,9 +5,9 @@
     "imagePath": "public/ads/ad_001/image.jpg",
     "videoPath": "public/ads/ad_001/video.mp4",
     "clickUrl": "https://www.google.com",
-    "minSeconds": 30,
-    "maxSeconds": 50,
-    "allowSkipAfter": 55,
+    "minSeconds": 1,
+    "maxSeconds": 2,
+    "allowSkipAfter": 2,
     "muteByDefault": true
   },
   {
@@ -17,8 +17,8 @@
     "videoPath": "public/ads/ad_002/video.mp4",
     "clickUrl": "https://www.google.com",
     "minSeconds": 2,
-    "maxSeconds": 10,
-    "allowSkipAfter": 3,
+    "maxSeconds": 55,
+    "allowSkipAfter": 56,
     "muteByDefault": true
   }
 ]
