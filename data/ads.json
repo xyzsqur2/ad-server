@@ -5,9 +5,9 @@
     "imagePath": "public/ads/ad_001/image.jpg",
     "videoPath": "public/ads/ad_001/video.mp4",
     "clickUrl": "https://www.google.com",
-    "minSeconds": 3,
-    "maxSeconds": 15,
-    "allowSkipAfter": 5,
+    "minSeconds": 30,
+    "maxSeconds": 50,
+    "allowSkipAfter": 55,
     "muteByDefault": true
   },
   {

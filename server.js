@@ -770,17 +770,70 @@ app.get('/ad/next', (req, res) => {
     `);
   }
   
-  // URL da imagem via proxy do servidor (resolve problemas de CORS e hotlinking)
   const protocol = getProtocol(req);
   const host = req.get('host');
-  const imageUrl = `${protocol}://${host}/proxy-image`;
+  const imageUrl = `${protocol}://${host}/imagem/${ad.id}`;
+  const videoUrl = `${protocol}://${host}/video/${ad.id}`;
   
-  // URL de clique do anúncio
-  const clickUrl = 'https://watchverse-jtkz.onrender.com/' || '#';
+  const clickUrl = ad.clickUrl || 'https://watchverse-jtkz.onrender.com/';
   
   // Log do anúncio escolhido e origin
   const origin = req.get('origin') || 'no-origin';
   console.log(`[AD] Anúncio HTML escolhido: ${ad.id} | Origin: ${origin} | Image URL: ${imageUrl}`);
+
+  const rn = String(req.query.rn || '') === '1';
+  if (rn) {
+    const allowSkipAfter = Number.isFinite(Number(ad.allowSkipAfter)) ? Number(ad.allowSkipAfter) : 5;
+    const minSeconds = Number.isFinite(Number(ad.minSeconds)) ? Number(ad.minSeconds) : 3;
+    const muteByDefault = ad.muteByDefault !== false;
+    const isVideo = ad.type === 'video';
+    const rnHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Ad</title>
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+    .wrap { position:fixed; inset:0; background:#000; }
+    video, img { width:100%; height:100%; object-fit:cover; display:block; background:#000; }
+    .hit { position:fixed; inset:0; background:transparent; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    ${isVideo
+      ? `<video id="adVideo" src="${videoUrl}" ${muteByDefault ? 'muted' : ''} autoplay playsinline webkit-playsinline></video>`
+      : `<img id="adImage" src="${imageUrl}" alt="ad" />`}
+    <a id="adCta" class="hit" href="${clickUrl}" target="_blank" rel="noopener noreferrer"></a>
+  </div>
+  <script>
+    (function () {
+      var meta = { type: 'ad_meta', adId: ${JSON.stringify(ad.id)}, allowSkipAfter: ${JSON.stringify(allowSkipAfter)}, minSeconds: ${JSON.stringify(minSeconds)}, clickUrl: ${JSON.stringify(clickUrl)} };
+      try { window.__AD_META__ = meta; } catch (e) {}
+      function post(msg) {
+        try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(msg)); } catch (e) {}
+      }
+      post(meta);
+      var cta = document.getElementById('adCta');
+      if (cta) {
+        cta.addEventListener('click', function (e) {
+          post({ type: 'ad_click', adId: meta.adId, clickUrl: meta.clickUrl });
+        });
+      }
+      var v = document.getElementById('adVideo');
+      if (v) {
+        v.addEventListener('ended', function () {
+          post({ type: 'ad_complete', adId: meta.adId });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>`;
+    res.send(rnHtml);
+    return;
+  }
   
   // HTML do comercial
   const html = `<!DOCTYPE html>
