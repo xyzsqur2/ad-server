@@ -98,21 +98,25 @@ export class FirebaseTrackingService {
   /**
    * Salva evento de tracking no Firebase
    */
-  async saveTracking(trackingData) {
+  async saveTracking(trackingData, explicitId = null) {
     if (this._disabled) {
       return { success: false, reason: 'firebase_disabled' };
     }
 
     try {
-      const id = this.generateId();
+      const id = explicitId || this.generateId();
       const ref = this.database.ref(`ad_tracking/${id}`);
-      
-      await ref.set(trackingData);
+      const payload = {
+        trackingId: id,
+        ...trackingData
+      };
+
+      await ref.set(payload);
       
       return {
         success: true,
         id: id,
-        timestamp: trackingData.ts || new Date().toISOString()
+        timestamp: payload.ts || new Date().toISOString()
       };
     } catch (error) {
       console.error('❌ Erro ao salvar tracking no Firebase:', error);

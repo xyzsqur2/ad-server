@@ -80,6 +80,8 @@ Registra eventos de tracking.
 {
   "event": "ad_impression",
   "adId": "ad_001",
+  "campaignId": "campaign_launch_ad_001",
+  "placement": "launch_interstitial",
   "watchedMs": 5000,
   "ts": "2026-01-27T10:00:00.000Z"
 }
@@ -132,6 +134,8 @@ Edite `data/ads.json` para adicionar ou modificar anúncios:
 [
   {
     "id": "ad_001",
+    "campaignId": "campaign_launch_ad_001",
+    "placement": "launch_interstitial",
     "type": "video",
     "imagePath": "public/ads/ad_001/image.jpg",
     "videoPath": "public/ads/ad_001/video.mp4",
@@ -146,6 +150,8 @@ Edite `data/ads.json` para adicionar ou modificar anúncios:
 
 **Campos:**
 - `id` - Identificador único do anúncio
+- `campaignId` - Identificador explícito da campanha usada no tracking comercial
+- `placement` - Posição de entrega do anúncio no app, como `launch_interstitial`
 - `type` - `"video"` ou `"image"`
 - `imagePath` - Caminho relativo da imagem (não usado diretamente, apenas para referência)
 - `videoPath` - Caminho relativo do vídeo (não usado diretamente, apenas para referência)

@@ -222,6 +222,39 @@ function generateId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+const ALLOWED_TRACKING_EVENTS = new Set(['ad_impression', 'ad_click', 'ad_complete']);
+
+function normalizeOptionalString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeTrackingEvent(value) {
+  return normalizeOptionalString(value);
+}
+
+function normalizeClientTimestamp(value, fallbackIso) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return fallbackIso;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? fallbackIso : parsed.toISOString();
+}
+
+function normalizeDeviceSummary(body) {
+  const summary = body?.deviceSummary;
+  if (summary && typeof summary === 'object' && !Array.isArray(summary)) {
+    return summary;
+  }
+
+  const legacyDevice = body?.clientGeo?.device || body?.device_info;
+  if (legacyDevice && typeof legacyDevice === 'object' && !Array.isArray(legacyDevice)) {
+    return legacyDevice;
+  }
+
+  return null;
+}
+
 // Função para obter IP real do usuário
 function getClientIP(req) {
   return req.ip || 
@@ -787,6 +820,8 @@ app.get('/ad/next', (req, res) => {
     const minSeconds = Number.isFinite(Number(ad.minSeconds)) ? Number(ad.minSeconds) : 3;
     const muteByDefault = ad.muteByDefault !== false;
     const isVideo = ad.type === 'video';
+    const campaignId = normalizeOptionalString(ad.campaignId) || ad.id;
+    const placement = normalizeOptionalString(ad.placement) || 'launch_interstitial';
     const rnHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -809,7 +844,7 @@ app.get('/ad/next', (req, res) => {
   </div>
   <script>
     (function () {
-      var meta = { type: 'ad_meta', adId: ${JSON.stringify(ad.id)}, allowSkipAfter: ${JSON.stringify(allowSkipAfter)}, minSeconds: ${JSON.stringify(minSeconds)}, clickUrl: ${JSON.stringify(clickUrl)} };
+      var meta = { type: 'ad_meta', adId: ${JSON.stringify(ad.id)}, campaignId: ${JSON.stringify(campaignId)}, placement: ${JSON.stringify(placement)}, allowSkipAfter: ${JSON.stringify(allowSkipAfter)}, minSeconds: ${JSON.stringify(minSeconds)}, clickUrl: ${JSON.stringify(clickUrl)} };
       try { window.__AD_META__ = meta; } catch (e) {}
       function post(msg) {
         try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(msg)); } catch (e) {}
@@ -818,13 +853,13 @@ app.get('/ad/next', (req, res) => {
       var cta = document.getElementById('adCta');
       if (cta) {
         cta.addEventListener('click', function (e) {
-          post({ type: 'ad_click', adId: meta.adId, clickUrl: meta.clickUrl });
+          post({ type: 'ad_click', adId: meta.adId, campaignId: meta.campaignId, placement: meta.placement, clickUrl: meta.clickUrl });
         });
       }
       var v = document.getElementById('adVideo');
       if (v) {
         v.addEventListener('ended', function () {
-          post({ type: 'ad_complete', adId: meta.adId });
+          post({ type: 'ad_complete', adId: meta.adId, campaignId: meta.campaignId, placement: meta.placement });
         });
       }
     })();
@@ -1540,6 +1575,18 @@ app.post('/track', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   
   try {
+    const utcNow = new Date();
+    const serverReceivedAt = utcNow.toISOString();
+    const event = normalizeTrackingEvent(req.body?.event);
+
+    if (!event || !ALLOWED_TRACKING_EVENTS.has(event)) {
+      return res.json({
+        success: true,
+        accepted: false,
+        reason: 'unsupported_event'
+      });
+    }
+
     // PRIORIDADE 1: Usar IP público do cliente se fornecido (mais confiável)
     let clientIP = req.body.clientGeo?.ipAddress;
     
@@ -1581,7 +1628,7 @@ app.post('/track', async (req, res) => {
       // Se falhar, tentar API externa como fallback
       if (!geo.success && process.env.USE_IP_API === 'true') {
         console.log(`🔄 Tentando API externa para IP ${clientIP}...`);
-        geo = await ipGeoService.getLocationByIPExternal(clientIP);
+        geo = await ipGeoService.getLocationByIPAPI(clientIP);
         geoSource = geo.success ? 'ip_api' : 'none';
       }
     }
@@ -1593,9 +1640,6 @@ app.post('/track', async (req, res) => {
       console.log(`✅ Geolocalização OK: ${geo.country_name} (${geo.country_code}) - IP: ${clientIP} - Fonte: ${geoSource}`);
     }
     
-    // Timestamp UTC atual
-    const utcNow = new Date();
-    
     // Converter para horário local do usuário (se tiver timezone)
     const localTimeInfo = ipGeoService.convertToLocalTime(
       utcNow, 
@@ -1603,79 +1647,78 @@ app.post('/track', async (req, res) => {
     );
     
     // Preparar dados de tracking
+    const normalizedAdId = normalizeOptionalString(req.body?.adId);
+    const normalizedCampaignId = normalizeOptionalString(req.body?.campaignId) || normalizedAdId;
+    const normalizedPlacement = normalizeOptionalString(req.body?.placement) || 'launch_interstitial';
+    const normalizedClickUrl = normalizeOptionalString(req.body?.clickUrl);
+    const normalizedInstallId = normalizeOptionalString(req.body?.installId);
+    const normalizedAppVersion = normalizeOptionalString(req.body?.appVersion);
+    const normalizedTs = normalizeClientTimestamp(req.body?.ts, serverReceivedAt);
+    const deviceSummary = normalizeDeviceSummary(req.body);
+    const trackingId = generateId();
     const trackingData = {
-      event: req.body.event || 'unknown',
-      ts: req.body.ts || utcNow.toISOString(),
-      adId: req.body.adId || null,
-      watchedMs: req.body.watchedMs || 0,
-      ...req.body
+      ...req.body,
+      event,
+      ts: normalizedTs,
+      adId: normalizedAdId,
+      campaignId: normalizedCampaignId,
+      placement: normalizedPlacement,
+      clickUrl: normalizedClickUrl,
+      installId: normalizedInstallId,
+      appVersion: normalizedAppVersion,
+      deviceSummary,
+      watchedMs: Number(req.body?.watchedMs) || 0
     };
 
     // Log no arquivo (mantém compatibilidade)
     logTracking(trackingData);
 
-    // Salvar no Firebase com geolocalização E horário local (assíncrono, não bloqueia)
-    if (geo.success) {
-      const firebaseData = {
-        event: trackingData.event,
-        adId: trackingData.adId || null,
-        ts: utcNow.toISOString(), // Horário UTC
-        watchedMs: trackingData.watchedMs || 0,
-        localTime: localTimeInfo.localTime ? localTimeInfo.localTime.toISOString() : null,
-        localTimeString: localTimeInfo.localTimeString, // String legível
-        hourLocal: localTimeInfo.hourLocal, // Hora (0-23)
-        dayOfWeek: localTimeInfo.dayOfWeek, // Dia da semana (0-6)
-        ipAddress: clientIP, // IP público do cliente
-        countryCode: geo.country_code, // ✅ SEMPRE terá countryCode quando geo.success
-        countryName: geo.country_name,
-        region: geo.region,
-        city: geo.city,
-        latitude: geo.latitude, // GPS do cliente se disponível
-        longitude: geo.longitude, // GPS do cliente se disponível
-        timezone: geo.timezone,
-        geoSource: geoSource, // Fonte da geolocalização (client_gps, ip, ip_api)
-        deviceInfo: req.body.clientGeo?.device || req.body.device_info || null,
-        screenWidth: req.body.clientGeo?.screenWidth || null,
-        screenHeight: req.body.clientGeo?.screenHeight || null,
-        userAgent: req.body.clientGeo?.userAgent || req.get('user-agent') || null,
-        eventData: trackingData,
-        createdAt: utcNow.toISOString()
-      };
+    const firebaseData = {
+      event: trackingData.event,
+      ts: trackingData.ts,
+      adId: trackingData.adId,
+      campaignId: trackingData.campaignId,
+      placement: trackingData.placement,
+      clickUrl: trackingData.clickUrl,
+      watchedMs: trackingData.watchedMs || 0,
+      installId: trackingData.installId,
+      appVersion: trackingData.appVersion,
+      deviceSummary,
+      deviceInfo: req.body.clientGeo?.device || req.body.device_info || null,
+      screenWidth: req.body.clientGeo?.screenWidth || null,
+      screenHeight: req.body.clientGeo?.screenHeight || null,
+      userAgent: req.body.clientGeo?.userAgent || req.get('user-agent') || null,
+      localTime: localTimeInfo.localTime ? localTimeInfo.localTime.toISOString() : null,
+      localTimeString: localTimeInfo.localTimeString,
+      hourLocal: localTimeInfo.hourLocal,
+      dayOfWeek: localTimeInfo.dayOfWeek,
+      ipAddress: clientIP || null,
+      countryCode: geo.success ? geo.country_code : null,
+      countryName: geo.success ? geo.country_name : null,
+      region: geo.success ? geo.region : null,
+      city: geo.success ? geo.city : null,
+      latitude: geo.success ? geo.latitude : null,
+      longitude: geo.success ? geo.longitude : null,
+      timezone: geo.success ? geo.timezone : null,
+      geoSource,
+      serverReceivedAt,
+      createdAt: serverReceivedAt,
+      countedForDelivery: event === 'ad_click',
+      source: 'render_track_endpoint',
+      eventData: trackingData
+    };
 
-      // Salvar assincronamente (não aguardar)
-      firebaseTracking.saveTracking(firebaseData).catch(err => {
-        console.error('Erro ao salvar tracking no Firebase:', err.message);
-        // Não quebrar o fluxo se o Firebase falhar
-      });
-    } else {
-      // Tentar salvar mesmo sem geolocalização (IP inválido ou não encontrado)
-      // Mas agora temos IP público do cliente, então podemos tentar geolocalização retroativa depois
-      const firebaseData = {
-        event: trackingData.event,
-        adId: trackingData.adId || null,
-        ts: utcNow.toISOString(),
-        watchedMs: trackingData.watchedMs || 0,
-        localTime: localTimeInfo.localTime ? localTimeInfo.localTime.toISOString() : null,
-        localTimeString: localTimeInfo.localTimeString,
-        hourLocal: localTimeInfo.hourLocal,
-        dayOfWeek: localTimeInfo.dayOfWeek,
-        ipAddress: clientIP, // IP público do cliente (útil para migração futura)
-        deviceInfo: req.body.clientGeo?.device || req.body.device_info || null,
-        screenWidth: req.body.clientGeo?.screenWidth || null,
-        screenHeight: req.body.clientGeo?.screenHeight || null,
-        userAgent: req.body.clientGeo?.userAgent || req.get('user-agent') || null,
-        eventData: trackingData,
-        createdAt: utcNow.toISOString()
-        // ⚠️ Sem countryCode - mas agora temos IP público para tentar geolocalização retroativa
-      };
-
-      firebaseTracking.saveTracking(firebaseData).catch(err => {
-        console.error('Erro ao salvar tracking no Firebase:', err.message);
-      });
-    }
+    // Salvar assincronamente (não aguardar)
+    firebaseTracking.saveTracking(firebaseData, trackingId).catch(err => {
+      console.error('Erro ao salvar tracking no Firebase:', err.message);
+      // Não quebrar o fluxo se o Firebase falhar
+    });
 
     res.json({ 
       success: true,
+      accepted: true,
+      trackingId,
+      savedPath: `ad_tracking/${trackingId}`,
       geo: geo.success ? {
         country: geo.country_name,
         region: geo.region,

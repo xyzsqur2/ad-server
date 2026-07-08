@@ -1,6 +1,8 @@
 [
   {
     "id": "ad_001",
+    "campaignId": "campaign_launch_ad_001",
+    "placement": "launch_interstitial",
     "type": "video",
     "imagePath": "",
     "videoPath": "public/ads/ad_001/video.mp4",
@@ -12,6 +14,8 @@
   },
   {
     "id": "ad_002",
+    "campaignId": "campaign_launch_ad_002",
+    "placement": "launch_interstitial",
     "type": "video",
     "imagePath": "",
     "videoPath": "public/ads/ad_002/video.mp4",
